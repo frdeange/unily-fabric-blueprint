@@ -6,7 +6,7 @@ import sys
 import unittest
 import uuid
 from pathlib import Path
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src" / "product_analytics"))
@@ -97,13 +97,35 @@ class RuntimeConfigTests(unittest.TestCase):
         for name, sections in code_sections().items():
             cells = notebook_cells(name, sections)
             code = [cell for cell in cells if cell["cell_type"] == "code"]
-            self.assertEqual(len(code), 3 if name.endswith("_Build") else 5)
-            self.assertIn("load_runtime_config", "".join(code[0]["source"]))
+            self.assertEqual(len(code), 3 if name.endswith("_Build") else 7)
+            configuration_index = 0 if name.endswith("_Build") else 1
+            self.assertIn("load_runtime_config", "".join(code[configuration_index]["source"]))
             self.assertEqual(len({cell["id"] for cell in cells}), len(cells))
             for cell in code:
                 compile("".join(cell["source"]), name, "exec")
                 self.assertIsNone(cell["execution_count"])
                 self.assertEqual(cell["outputs"], [])
+
+    def test_validation_only_exits_before_processing(self):
+        name = "ProductAnalytics_BronzeToSilver"
+        sections = code_sections()[name]
+        preflight = next(code for title, code in sections if title == "Read-only runtime validation")
+        utilities = Mock()
+        class NotebookExit(Exception):
+            pass
+        utilities.notebook.exit.side_effect = NotebookExit
+        namespace = {"validate_only": True, "CONFIG": {}, "spark": object(),
+                     "notebookutils": utilities, "json": json}
+        # Replace only the validation function with a controlled read-only result.
+        tree = ast.parse(preflight)
+        tree.body = [node for node in tree.body if not isinstance(node, ast.FunctionDef)]
+        namespace["validate_runtime"] = Mock(return_value={"data_writes": 0})
+        with self.assertRaises(NotebookExit), patch("builtins.print"):
+            exec(compile(tree, "<preflight>", "exec"), namespace)
+        namespace["validate_runtime"].assert_called_once()
+        source = "\n".join(code for _, code in sections)
+        self.assertLess(source.index("Runtime validated; no processing or writes"),
+                        source.index("new_records ="))
 
     def test_processing_and_publication_failures_are_audited_and_raised(self):
         source = (ROOT / "src" / "product_analytics" / "silver_phase.py").read_text()

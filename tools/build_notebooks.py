@@ -17,6 +17,14 @@ def code_sections():
         + "\nimport notebookutils\nCONFIG = load_runtime_config(notebookutils)\n"
         + 'print("Runtime configuration validated; values are not printed.")\n'
     )
+    preflight = (
+        (source / "validate_runtime.py").read_text(encoding="utf-8")
+        + '\nif type(validate_only) is not bool:\n'
+        + '    raise ValueError("validate_only must be a Boolean")\n'
+        + 'if validate_only:\n'
+        + '    print(json.dumps(validate_runtime(CONFIG, spark), indent=2))\n'
+        + '    notebookutils.notebook.exit("Runtime validated; no processing or writes")\n'
+    )
     silver = (source / "silver_phase.py").read_text(encoding="utf-8")
     validation, processing, publication = silver.split("with audit_failure():\n")
     generator = build_product_analytics.notebook_source()
@@ -29,6 +37,7 @@ def code_sections():
         ],
         "ProductAnalytics_BronzeToSilver": [
             ("Configuration and validation", config),
+            ("Read-only runtime validation", preflight),
             ("Phase 1 - Tenant-scoped identity resolution",
              (source / "identity_phase.py").read_text(encoding="utf-8")),
             ("Phase 2 - Event validation and batch reuse",
@@ -41,6 +50,12 @@ def code_sections():
     }
 
 DESCRIPTIONS = {
+    "Read-only runtime validation": (
+        "Set the Boolean notebook parameter `validate_only=true` for a read-only "
+        "preflight. Validate Spark imports, input/output schemas, snapshot counts "
+        "and stable Delta versions, then exit the entire notebook before processing. "
+        "No AI inference, identity updates or audit writes. False continues normal processing."
+    ),
     "Configuration and validation": (
         "Read the active values from `ProductAnalytics_Config`. Validate environment "
         "IDs, the source registry and PII settings before any data access. Missing or "
@@ -90,6 +105,13 @@ def notebook_cells(name, sections):
                    "Use the lab user's runtime identity; Variable Library reads with "
                    "service principals are not currently supported.\n"],
     }]
+    if name == "ProductAnalytics_BronzeToSilver":
+        cells.append({
+            "cell_type": "code", "execution_count": None, "id": "run-parameters",
+            "metadata": {"tags": ["parameters"], "microsoft": {
+                "language": "python", "language_group": "synapse_pyspark"}},
+            "outputs": [], "source": ["validate_only = False\n"],
+        })
     for index, (title, code) in enumerate(sections, 1):
         compile(code, f"{name}:{title}", "exec")
         cells.extend([

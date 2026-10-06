@@ -83,6 +83,16 @@ from the earlier lab baseline: an existing populated Silver table will be held
 for manual migration review, not silently reprocessed or overwritten. No reset
 or marker migration is automated in this change.
 
+For a non-mutating Spark preflight, run `ProductAnalytics_BronzeToSilver` with
+the Boolean notebook parameter `validate_only=true`. The parameter cell is
+tagged for Fabric job injection. After loading configuration, the notebook
+checks pandas/AI Functions/Delta imports, reads registered user/event tables,
+mapping and Silver schemas, counts snapshot rows and checks stable table versions.
+It then exits before identity processing, inference, publication or audit writes.
+This verifies imports and storage access, not model availability or inference.
+Do not omit the parameter for a preflight: its normal-processing default is false.
+This mode does not run the RAW generator or change the legacy completion marker.
+
 NotebookUtils currently does not support Variable Library reads by service
 principals. Notebook execution remains delegated to the lab user; the GitHub
 OIDC identity is for publication, not processing. This limitation must be resolved
