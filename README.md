@@ -9,6 +9,11 @@ Public reference implementation for synthetic multi-tenant product analytics.
 | `ProductAnalytics_Build` | Generate separate synthetic A/B/C RAW sources. |
 | `ProductAnalytics_BronzeToSilver` | Resolve tenant-scoped identities, protect free text with Fabric AI Functions, and publish Silver. |
 
+| Pipeline | Purpose |
+| --- | --- |
+| `ProductAnalytics_Process` | Production path: read-only validation, then Bronze-to-Silver. Schedule this one. |
+| `ProductAnalytics_Demo` | Reproduction: synthetic RAW load (`Build`), then invokes `ProductAnalytics_Process`. Never schedule. |
+
 This is the existing lab baseline, not a production deployment framework.
 Workspace, lakehouse and logical item references are fictitious example IDs.
 The code intentionally rejects execution with these example values.
@@ -43,10 +48,12 @@ Shared code will go in `src/shared/` when there is an actual shared consumer.
 
 ## Runtime configuration
 
-Both notebooks load the active values of a Variable Library in the Data workspace
-named `ProductAnalytics_Config` using NotebookUtils. No fallback environment
-or configuration is embedded in the generated code cells. Configure these
-variables before running:
+Both notebooks use the active values of a Variable Library in the Data workspace
+named `ProductAnalytics_Config`. Pipelines resolve the library values and inject
+all of them as notebook parameters; an interactive run leaves the parameters as
+`None` and reads the library through NotebookUtils. Partial parameters are rejected.
+No fallback environment or configuration is embedded in the generated code cells.
+Configure these variables before running:
 
 | Variable | Fabric type | Purpose |
 | --- | --- | --- |
@@ -104,12 +111,15 @@ Do not omit the parameter for a preflight: its normal-processing default is fals
 This mode does not run the RAW generator or change the legacy completion marker.
 
 NotebookUtils currently does not support Variable Library reads by service
-principals. Notebook execution remains delegated to the lab user; the GitHub
-OIDC identity is for publication, not processing. This limitation must be resolved
-before scheduling these notebooks with a service identity.
+principals; parameter injection by the pipelines avoids that read. A notebook run
+from a pipeline uses the identity of the pipeline's last modifier. Because the
+deployment publishes the pipelines, that is the deployment service principal, and
+a schedule runs as whoever created or last updated it. Whether AI Functions and
+cross-workspace OneLake writes work under a service principal is validated in #18.
 
 The deployment allowlist includes the Bronze, Silver and Gold lakehouses (Data),
-the Identity lakehouse (Vault), the two Product notebooks and their configuration library.
+the Identity lakehouse (Vault), the two Product notebooks, their configuration library
+and the two Product pipelines.
 Adding another item requires explicitly extending that allowlist and its tests.
 Semantic-model publication is not implemented yet.
 Folder organization does not grant permissions or isolate data.
@@ -194,7 +204,9 @@ runtime/Spark verification and a review of the existing Silver completion marker
 
 **Deploy dev environment** deploys only the allowlisted items from approved
 `main` through the `dev` gate: first the Vault lakehouse, then the Data
-lakehouses, then `ProductAnalytics_Config` and the two Product notebooks. It uses
+lakehouses, then `ProductAnalytics_Config`, the two Product notebooks and the two
+pipelines in one publication, so pipeline references to notebooks and to the other
+pipeline resolve to the deployed item IDs. It uses
 `fabric-cicd` 1.3.0 with Azure CLI OIDC credentials. It does not call orphan
 cleanup, create workspace folders, deploy models/agents, execute notebooks or
 refresh data. Lakehouses are created schema-enabled and empty; existing item IDs
@@ -208,7 +220,8 @@ publication; it never broadly scans/publishes the whole repository.
 An explicit `dev` value set is generated and activated by the package.
 
 After publication, definition readback checks notebook cell content, absence
-of outputs, configured library values and the active value set. It also checks
+of outputs, configured library values, the active value set, and pipeline
+activities, dependencies, parameters and resolved references. It also checks
 that pre-existing item IDs survive, lakehouses are schema-enabled, and no
 unexpected items appear/disappear (SQL analytics endpoints created by Fabric for
 each lakehouse are expected).
@@ -239,3 +252,13 @@ populated Silver are rejected. Deployment is separate from execution. The RAW
 generator performs an initial load into empty Bronze tables and refuses to
 overwrite existing tables unless `allow_synthetic_overwrite` is explicitly true.
 It must never run automatically as part of a deployment.
+
+## Reproducing the scenario
+
+1. Provision the three workspaces and run **Deploy dev environment**.
+2. In `Unily-Data-<Env>`, run the `ProductAnalytics_Demo` pipeline once. It loads
+   the synthetic A/B/C RAW tables into empty Bronze tables, then runs
+   `ProductAnalytics_Process` (validation, then Bronze-to-Silver).
+3. Later runs use `ProductAnalytics_Process` only. An unchanged batch is a no-op.
+   Rerunning `ProductAnalytics_Demo` against populated Bronze fails by design
+   in `Build` unless `allow_synthetic_overwrite` is explicitly true.

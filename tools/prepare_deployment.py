@@ -1,6 +1,7 @@
 """Prepare isolated, explicitly scoped deployment stages without touching Fabric."""
 
 import json
+import re
 import shutil
 import sys
 from pathlib import Path
@@ -19,16 +20,23 @@ ITEMS = {
         LIBRARY_NAME: ("VariableLibrary", "product-analytics/variable-libraries"),
         "ProductAnalytics_Build": ("Notebook", "product-analytics/notebooks"),
         "ProductAnalytics_BronzeToSilver": ("Notebook", "product-analytics/notebooks"),
+        "ProductAnalytics_Process": ("DataPipeline", "product-analytics/pipelines"),
+        "ProductAnalytics_Demo": ("DataPipeline", "product-analytics/pipelines"),
     },
     "analytics": {},
 }
-# Lakehouses first: the configuration references their IDs.
-STAGES = (("vault", ("Lakehouse",)), ("data", ("Lakehouse",)), ("data", ("VariableLibrary", "Notebook")))
+# Lakehouses first: the configuration references their IDs. Pipelines share the last stage
+# with the notebooks they reference, so fabric-cicd can resolve their logical IDs.
+STAGES = (("vault", ("Lakehouse",)), ("data", ("Lakehouse",)),
+          ("data", ("VariableLibrary", "Notebook", "DataPipeline")))
 ALLOWED_FILES = {
     "Lakehouse": {".platform", "lakehouse.metadata.json"},
     "Notebook": {".platform", "notebook-content.ipynb"},
     "VariableLibrary": {".platform", "variables.json", "settings.json"},
+    "DataPipeline": {".platform", "pipeline-content.json"},
 }
+DEFAULT_WORKSPACE = "00000000-0000-0000-0000-000000000000"
+GUID = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", re.I)
 LIBRARY_FOLDER = (ROOT / "fabric" / "data" / "product-analytics" / "variable-libraries"
                   / f"{LIBRARY_NAME}.VariableLibrary")
 SUPPORTED_ENVIRONMENTS = {"dev"}
@@ -69,6 +77,11 @@ def runtime_values(settings, ids):
     return values
 
 
+def logical_ids(root, layer):
+    return {json.loads((item_folder(root, layer, name) / ".platform").read_text())["config"]["logicalId"]: name
+            for name in ITEMS[layer]}
+
+
 def check_scope(root):
     for layer, items in ITEMS.items():
         source = root / "fabric" / layer
@@ -89,6 +102,11 @@ def check_scope(root):
                 if any(c.get("outputs") or c.get("execution_count") is not None
                        or c.get("attachments") for c in notebook["cells"]):
                     raise ValueError("Notebook output or attachments cannot be deployed")
+            if kind == "DataPipeline":
+                # Only same-layer item references and the publication workspace placeholder.
+                content = (item / "pipeline-content.json").read_text()
+                if set(GUID.findall(content)) - set(logical_ids(root, layer)) - {DEFAULT_WORKSPACE}:
+                    raise ValueError(f"Pipeline references an item outside its layer: {name}")
 
 
 def write_library(library, values):

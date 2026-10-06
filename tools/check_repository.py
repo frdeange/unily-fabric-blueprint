@@ -15,11 +15,15 @@ PATTERNS = [
 ]
 EXCLUDED = {".git", "__pycache__", ".venv", ".pytest_cache"}
 GUID = re.compile(r"\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b", re.I)
-EXAMPLE_GUIDS = {f"00000000-0000-4000-8000-{i:012d}" for i in range(1, 13)}
+# Example logical IDs plus fabric-cicd's workspace placeholder in pipeline references.
+EXAMPLE_GUIDS = {f"00000000-0000-4000-8000-{i:012d}" for i in range(1, 15)} | {"00000000-0000-0000-0000-000000000000"}
 
 EXPECTED_ITEMS = {
     Path("data") / "product-analytics" / "notebooks" / f"{name}.Notebook"
     for name in ("ProductAnalytics_Build", "ProductAnalytics_BronzeToSilver")
+} | {
+    Path("data") / "product-analytics" / "pipelines" / f"{name}.DataPipeline"
+    for name in ("ProductAnalytics_Process", "ProductAnalytics_Demo")
 } | {
     Path("data") / "product-analytics" / "variable-libraries" / "ProductAnalytics_Config.VariableLibrary",
     Path("vault") / "shared" / "lakehouses" / "Identity.Lakehouse",

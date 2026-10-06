@@ -102,6 +102,7 @@ Patterns:
 | Table | `snake_case` noun | `usage_events`, `dim_user` |
 | Notebook | `<Domain>_<Purpose>` | `ProductAnalytics_BronzeToSilver`, `ProductAnalytics_SilverToGold` |
 | Variable Library (configuration only, not a notebook) | `<Domain>_Config` | `ProductAnalytics_Config` |
+| Data pipeline (orchestration) | `<Domain>_<Purpose>` | `ProductAnalytics_Process`, `ProductAnalytics_Demo` |
 | Semantic model | `<Domain>_<Audience>` | `ProductAnalytics_Safe`, `Support_Safe`, `ProductAnalytics_Ops` |
 | Data Agent | `<Domain>_<Audience>_Agent` | `ProductAnalytics_Safe_Agent` |
 | Entra security group | `SG-Unily-<Layer>-<Env>-<Role>` | `SG-Unily-Data-Prod-Contributors` |
@@ -148,7 +149,7 @@ Current tables (all in the `product` schema of schema-enabled lakehouses):
 | Topic | Status |
 | --- | --- |
 | Direct Lake with RLS reading Gold in another workspace (direct or OneLake shortcut) | **Unverified** (#11) |
-| Identity that runs Bronze-to-Silver across Data and Vault. NotebookUtils Variable Library reads do not support service principals today. | Lab: the delegated lab user, admin of the three workspaces. Production identity **unresolved** |
+| Identity that runs Bronze-to-Silver across Data and Vault. Pipelines inject the Variable Library values as parameters, because NotebookUtils library reads do not support service principals. A pipeline-run notebook uses the pipeline's last modifier (the deployment service principal) | **Unverified** (#18): AI Functions and cross-workspace writes under a service principal. Alternative: a Workspace Identity connection |
 | Schema-enabled lakehouses with deployment tooling | Created by `fabric-cicd`; first write to the `product` schema validated in #16. Direct Lake pending (#11) |
 | OneLake security as an alternative or complement to Vault | Not evaluated |
 

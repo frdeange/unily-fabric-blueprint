@@ -1,4 +1,4 @@
-"""Generate notebook code from sources without invoking Fabric or the detector."""
+"""Generate notebook code and pipeline definitions from sources without invoking Fabric."""
 
 import argparse
 import json
@@ -8,15 +8,21 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src" / "product_analytics"))
 import build_product_analytics
+from runtime_config import FIELDS, LIBRARY_NAME
 
 NOTEBOOKS = ROOT / "fabric" / "data" / "product-analytics" / "notebooks"
+PIPELINES = ROOT / "fabric" / "data" / "product-analytics" / "pipelines"
+# fabric-cicd replaces this placeholder with the target workspace at publication.
+DEFAULT_WORKSPACE = "00000000-0000-0000-0000-000000000000"
+BOOLEAN_FIELDS = {"allow_synthetic_overwrite"}
 
 
 def code_sections():
     source = ROOT / "src" / "product_analytics"
     config = (
         (source / "runtime_config.py").read_text(encoding="utf-8")
-        + "\nimport notebookutils\nCONFIG = load_runtime_config(notebookutils)\n"
+        + "\nimport notebookutils\n"
+        + "CONFIG = load_runtime_config(notebookutils, {name: globals().get(name) for name in FIELDS})\n"
         + 'print("Runtime configuration validated; values are not printed.")\n'
     )
     preflight = (
@@ -59,8 +65,9 @@ DESCRIPTIONS = {
         "No AI inference, identity updates or audit writes. False continues normal processing."
     ),
     "Configuration and validation": (
-        "Read the active values from `ProductAnalytics_Config`. Validate environment "
-        "IDs, the source registry and PII settings before any data access. Missing or "
+        "Pipeline runs pass every `ProductAnalytics_Config` value as a parameter; "
+        "interactive runs read the active value set directly. Validate environment "
+        "IDs, the source registry and PII settings before any data access. Missing, partial or "
         "example configuration fails explicitly; no fallback is used."
     ),
     "Versioned synthetic fixture": (
@@ -105,17 +112,20 @@ def notebook_cells(name, sections):
     cells = [{
         "cell_type": "markdown", "id": "overview", "metadata": {},
         "source": [f"# {name}\n", "\n",
-                   "Run cells in order. Deployment never executes this notebook. "
-                   "Use the lab user's runtime identity; Variable Library reads with "
-                   "service principals are not currently supported.\n"],
+                   "Run through the `ProductAnalytics_Process` or `ProductAnalytics_Demo` "
+                   "pipeline, or interactively with cells in order. Deployment never executes "
+                   "this notebook.\n"],
     }]
+    parameters = ["# Pipelines inject these values from ProductAnalytics_Config; keep None interactively.\n"]
+    parameters += [f"{field} = None\n" for field in sorted(FIELDS)]
     if name == "ProductAnalytics_BronzeToSilver":
-        cells.append({
-            "cell_type": "code", "execution_count": None, "id": "run-parameters",
-            "metadata": {"tags": ["parameters"], "microsoft": {
-                "language": "python", "language_group": "synapse_pyspark"}},
-            "outputs": [], "source": ["validate_only = False\n"],
-        })
+        parameters.append("validate_only = False\n")
+    cells.append({
+        "cell_type": "code", "execution_count": None, "id": "run-parameters",
+        "metadata": {"tags": ["parameters"], "microsoft": {
+            "language": "python", "language_group": "synapse_pyspark"}},
+        "outputs": [], "source": parameters,
+    })
     for index, (title, code) in enumerate(sections, 1):
         compile(code, f"{name}:{title}", "exec")
         cells.extend([
@@ -127,6 +137,63 @@ def notebook_cells(name, sections):
              "source": code.splitlines(keepends=True)},
         ])
     return cells
+
+
+def logical_id(folder):
+    return json.loads((folder / ".platform").read_text(encoding="utf-8"))["config"]["logicalId"]
+
+
+def expression(value, kind):
+    return {"value": {"value": value, "type": "Expression"}, "type": kind}
+
+
+def notebook_activity(name, notebook, depends_on=(), validate_only=None, timeout="0.01:00:00"):
+    parameters = {
+        field: expression(f"@pipeline().libraryVariables.{field}",
+                          "bool" if field in BOOLEAN_FIELDS else "string")
+        for field in sorted(FIELDS)
+    }
+    if validate_only is not None:
+        parameters["validate_only"] = expression(f"@bool('{str(validate_only).lower()}')", "bool")
+    return {
+        "name": name, "type": "TridentNotebook",
+        "dependsOn": [{"activity": d, "dependencyConditions": ["Succeeded"]} for d in depends_on],
+        "policy": {"timeout": timeout, "retry": 0, "retryIntervalInSeconds": 30,
+                   "secureOutput": True, "secureInput": True},
+        "typeProperties": {
+            "notebookId": logical_id(NOTEBOOKS / f"{notebook}.Notebook"),
+            "workspaceId": DEFAULT_WORKSPACE, "parameters": parameters,
+        },
+    }
+
+
+def pipelines():
+    """Process is the production path; Demo adds the synthetic RAW load for reproduction."""
+    library = {
+        field: {"type": "Bool" if field in BOOLEAN_FIELDS else "String",
+                "variableName": field, "libraryName": LIBRARY_NAME}
+        for field in sorted(FIELDS)
+    }
+    process = [
+        notebook_activity("Validate", "ProductAnalytics_BronzeToSilver", validate_only=True),
+        notebook_activity("BronzeToSilver", "ProductAnalytics_BronzeToSilver", ("Validate",),
+                          validate_only=False, timeout="0.04:00:00"),
+    ]
+    demo = [
+        notebook_activity("Build", "ProductAnalytics_Build"),
+        {
+            "name": "Process", "type": "ExecutePipeline",
+            "dependsOn": [{"activity": "Build", "dependencyConditions": ["Succeeded"]}],
+            "policy": {"secureInput": True},
+            "typeProperties": {
+                "pipeline": {"referenceName": logical_id(PIPELINES / "ProductAnalytics_Process.DataPipeline"),
+                             "type": "PipelineReference"},
+                "waitOnCompletion": True,
+            },
+        },
+    ]
+    return {name: {"properties": {"activities": activities, "libraryVariables": library}}
+            for name, activities in (("ProductAnalytics_Process", process), ("ProductAnalytics_Demo", demo))}
 
 
 def build(check=False):
@@ -142,7 +209,14 @@ def build(check=False):
             # All data access uses validated absolute paths, not a default lakehouse.
             notebook["metadata"].pop("dependencies", None)
             path.write_text(json.dumps(notebook, indent=1, sort_keys=True) + "\n", encoding="utf-8")
-    print("Notebook source consistency verified." if check else "Notebook code cells rebuilt.")
+    for name, expected in pipelines().items():
+        path = PIPELINES / f"{name}.DataPipeline" / "pipeline-content.json"
+        if check:
+            if json.loads(path.read_text(encoding="utf-8")) != expected:
+                raise ValueError(f"Source and generated pipeline differ: {name}")
+        else:
+            path.write_text(json.dumps(expected, indent=2) + "\n", encoding="utf-8")
+    print("Notebook and pipeline consistency verified." if check else "Notebooks and pipelines rebuilt.")
 
 
 if __name__ == "__main__":
