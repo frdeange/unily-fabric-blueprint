@@ -18,6 +18,7 @@
 /.github/pull_request_template.md @frdeange
 /.github/CONTRIBUTING.md @frdeange
 /.github/copilot-instructions.md @frdeange
+/docs/ @frdeange
 /.pre-commit-config.yaml @frdeange
 /requirements-dev.txt @frdeange
 /.github/CODEOWNERS @frdeange

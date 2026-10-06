@@ -6,7 +6,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 ALLOWED_ROOT_FILES = {"README.md", ".gitignore", ".pre-commit-config.yaml", "requirements-dev.txt", "requirements-deploy.txt"}
-ALLOWED_DIRECTORIES = {"src", "tests", "tools", "fabric", ".github", "config"}
+ALLOWED_DIRECTORIES = {"src", "tests", "tools", "fabric", ".github", "config", "docs"}
 PATTERNS = [
     re.compile(r"\b(?:gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,})\b"),
     re.compile(r"-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----"),

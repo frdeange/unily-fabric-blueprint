@@ -44,6 +44,7 @@ token do not trigger it again.
 
 ## Safety rules
 
+- Follow the architecture and naming convention in `docs/architecture.md`.
 - Never include secrets, tokens, real tenant/workspace/item IDs or personal
   data in issues, pull requests, commits or notebooks. Use the example GUIDs.
 - Install and run the pre-commit hooks described in the README.

@@ -25,3 +25,7 @@ Follow `.github/CONTRIBUTING.md`. Key rules:
   before any execution.
 - Add new Fabric items as `fabric/<domain>/<type>/<Name>.<FabricType>/` and
   explicitly extend the deployment allowlist and its tests.
+- Name workspaces, items, groups, identities and secrets exactly as defined in
+  `docs/architecture.md`. Never invent a name or token; if one is missing,
+  stop and propose a change to that document first. Respect workspace
+  boundaries: Analytics reads Gold only, and only Bronze-to-Silver writes Vault.
