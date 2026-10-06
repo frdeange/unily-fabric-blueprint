@@ -3,18 +3,29 @@ from pathlib import Path
 
 from tools.issue_workflow import (
     DATA_CHANGE_IMPACT,
+    MANAGED_LABELS,
+    WORKSPACE_LABELS,
     check_branch,
     check_issue,
     classify,
     closing_issues,
+    managed_labels,
+    path_labels,
+    target_workspace_labels,
 )
 
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def form(issue_type="Maintenance", area="CI/CD", impact="No Fabric or data impact"):
-    return (
+def form(issue_type="Maintenance", area="CI/CD", impact="No Fabric or data impact", workspaces=None):
+    body = (
         f"### Issue type\n\n{issue_type}\n\n### Area\n\n{area}\n\n"
+    )
+    if workspaces is not None:
+        boxes = "\n".join(f"- [{'X' if name in workspaces else ' '}] {name}"
+                          for name in ("Data", "Analytics", "Vault"))
+        body += f"### Target workspace\n\n{boxes}\n\n"
+    return body + (
         f"### Objective\n\nText with ### inside a line and `rm -rf /`.\n\n"
         f"### Fabric/data impact\n\n{impact}\n\n### Impact notes\n\n_No response_\n"
     )
@@ -77,7 +88,41 @@ class LinkTests(unittest.TestCase):
         self.assertIn("should be named", check_branch("chore/x", 7))
 
 
+class WorkspaceLabelTests(unittest.TestCase):
+    def test_checked_boxes_become_labels(self):
+        _, labels = classify("[Feature] x", form("Feature", "Product Analytics", workspaces={"Data", "Vault"}))
+        self.assertEqual(labels, {"✨ feature", "📊 product-analytics", "🗄️ data", "🔒 vault"})
+        self.assertEqual(target_workspace_labels("### Target workspace\n\n- [x] Analytics\n- [ ] Vault\n"),
+                         {"📈 analytics"})
+
+    def test_empty_or_missing_field(self):
+        self.assertEqual(target_workspace_labels(form(workspaces=set())), set())
+        self.assertIsNone(target_workspace_labels(form()))
+        self.assertEqual(target_workspace_labels("### Target workspace\n\n_No response_\n"), set())
+
+    def test_workspace_labels_managed_only_with_field(self):
+        self.assertEqual(managed_labels(form()), MANAGED_LABELS)
+        self.assertEqual(managed_labels(form(workspaces=set())), MANAGED_LABELS | WORKSPACE_LABELS)
+
+    def test_path_labels(self):
+        self.assertEqual(path_labels(["fabric/data/shared/lakehouses/Bronze.Lakehouse/.platform"]), {"🗄️ data"})
+        self.assertEqual(path_labels(["fabric/analytics/x/y"]), {"📈 analytics"})
+        self.assertEqual(path_labels(["src/product_analytics/identity_phase.py"]), {"🗄️ data", "🔒 vault"})
+        self.assertEqual(path_labels(["src/product_analytics/silver_phase.py"]), {"🗄️ data", "🔒 vault"})
+        self.assertEqual(path_labels(["src/product_analytics/runtime_config.py"]), {"🗄️ data"})
+        self.assertEqual(path_labels(["fabric/vault/shared/a", "fabric/data/b"]), {"🔒 vault", "🗄️ data"})
+        self.assertEqual(path_labels(["README.md", "tools/x.py", "fabric/datax/y", "src/product_analytics"]),
+                         set())
+
+
 class TemplateTests(unittest.TestCase):
+    def test_workspace_field_in_forms(self):
+        for name in ("1-feature.yml", "2-bug.yml", "3-maintenance.yml"):
+            text = (ROOT / ".github" / "ISSUE_TEMPLATE" / name).read_text(encoding="utf-8")
+            self.assertIn("label: Target workspace", text, name)
+            for option in ("Data", "Analytics", "Vault"):
+                self.assertIn(f'- label: "{option}"', text, name)
+
     def test_forms_match_classifier(self):
         from tools.issue_workflow import AREAS, TYPES
 

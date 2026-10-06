@@ -31,6 +31,15 @@ body:
         - "Repository"
     validations:
       required: true
+  - type: checkboxes
+    id: target-workspace
+    attributes:
+      label: Target workspace
+      description: "Fabric workspaces this issue changes. Leave empty if none. Vault changes need a privacy review."
+      options:
+        - label: "Data"
+        - label: "Analytics"
+        - label: "Vault"
   - type: textarea
     id: objective
     attributes:
