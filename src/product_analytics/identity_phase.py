@@ -9,16 +9,10 @@ import notebookutils
 from delta.tables import DeltaTable
 from pyspark.sql import functions as F
 
-WORKSPACE = "00000000-0000-4000-8000-000000000001"
-BRONZE = "00000000-0000-4000-8000-000000000002"
-IDENTITY = "00000000-0000-4000-8000-000000000005"
-if WORKSPACE.startswith("00000000-"):
-    raise RuntimeError("Example configuration only; bind a real environment before execution")
-SOURCES = {
-    "tenant_a": "product_users_tenant_a",
-    "tenant_b": "product_users_tenant_b",
-    "tenant_c": "product_users_tenant_c",
-}
+WORKSPACE = CONFIG["workspace_id"]
+BRONZE = CONFIG["bronze_id"]
+IDENTITY = CONFIG["identity_id"]
+SOURCES = {source["tenant_id"]: source["users_table"] for source in CONFIG["sources"]}
 BASE = f"abfss://{WORKSPACE}@onelake.dfs.fabric.microsoft.com"
 MAP_PATH = f"{BASE}/{IDENTITY}/Tables/map_user_identity"
 KEYS = ["tenant_id", "source_user_id"]

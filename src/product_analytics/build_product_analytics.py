@@ -1,21 +1,12 @@
 """Build a synthetic source notebook. It writes raw Bronze inputs only."""
 
-import argparse
 import inspect
 import json
 import random
 from collections import Counter
 from datetime import datetime, timedelta
-from pathlib import Path
 
 
-WORKSPACE_ID = "00000000-0000-4000-8000-000000000001"
-LAKEHOUSES = {
-    "bronze": "00000000-0000-4000-8000-000000000002",
-    "silver": "00000000-0000-4000-8000-000000000003",
-    "gold": "00000000-0000-4000-8000-000000000004",
-    "identity": "00000000-0000-4000-8000-000000000005",
-}
 TENANTS = [
     ("tenant_a", "Example Company A", "ES", 12),
     ("tenant_b", "Example Company B", "UK", 18),
@@ -27,7 +18,6 @@ FEATURES = [
     ("knowledge", "Knowledge", "Collaboration"),
     ("community", "Community", "Collaboration"),
 ]
-ROOT = Path(__file__).resolve().parent
 FIXTURE_VERSION = "abc-english-v2"
 RAW_TEXT_CASES = {
     "en": [
@@ -128,8 +118,10 @@ def split_source_rows(rows, tenant_index):
 
 
 SPARK_SOURCE = '''
-if WORKSPACE_ID.startswith("00000000-"):
-    raise RuntimeError("Example configuration only; bind a real environment before execution")
+if not CONFIG["allow_synthetic_overwrite"]:
+    raise RuntimeError("Synthetic RAW overwrite is disabled in runtime configuration")
+if {source["tenant_id"] for source in CONFIG["sources"]} != {tenant[0] for tenant in TENANTS}:
+    raise RuntimeError("The synthetic generator supports only the versioned A/B/C fixture")
 
 from pyspark.sql import functions as F
 
@@ -144,6 +136,7 @@ user_sources = split_source_rows(users, 0)
 event_sources = split_source_rows(event_rows, 1)
 bronze_evidence = {}
 for tenant_id, _, _, _ in TENANTS:
+    source = next(source for source in CONFIG["sources"] if source["tenant_id"] == tenant_id)
     raw_users = spark.createDataFrame(user_sources[tenant_id], user_schema)
     raw_events = spark.createDataFrame(event_sources[tenant_id], event_schema)
     bronze_evidence[tenant_id] = {}
@@ -152,7 +145,7 @@ for tenant_id, _, _, _ in TENANTS:
         df.write.mode("overwrite").json(landing)
         landed = spark.read.schema(df.schema).json(landing)
         assert landed.filter(F.col("tenant_id") != tenant_id).count() == 0
-        path = location(f"product_{name}_{tenant_id}")
+        path = location(source["users_table"] if name == "users" else source["events_table"])
         # Additive fixture schema evolution only; do not replace existing schemas.
         landed.write.format("delta").mode("overwrite").option("mergeSchema", "true").save(path)
         persisted = spark.read.format("delta").load(path)
@@ -161,7 +154,7 @@ for tenant_id, _, _, _ in TENANTS:
         bronze_evidence[tenant_id][name] = persisted.count()
     bronze_evidence[tenant_id]["text_cases"] = [
         row.asDict() for row in spark.read.format("delta").load(
-            location(f"product_events_{tenant_id}")
+            location(source["events_table"])
         ).filter(F.col("text_language").isNotNull()).select(
             "event_id", "free_text", "text_language"
         ).orderBy("event_id").collect()
@@ -185,7 +178,7 @@ print(json.dumps(evidence, indent=2))
 def notebook_source():
     return (
         "import json\nimport random\nfrom datetime import datetime, timedelta\n"
-        f"WORKSPACE_ID = {WORKSPACE_ID!r}\nBRONZE_ID = {LAKEHOUSES['bronze']!r}\n"
+        'WORKSPACE_ID = CONFIG["workspace_id"]\nBRONZE_ID = CONFIG["bronze_id"]\n'
         f"TENANTS = {TENANTS!r}\nFEATURES = {FEATURES!r}\n"
         f"FIXTURE_VERSION = {FIXTURE_VERSION!r}\nRAW_TEXT_CASES = {RAW_TEXT_CASES!r}\n\n"
         + inspect.getsource(add_raw_text) + "\n" + inspect.getsource(generate_data) + "\n"
@@ -193,42 +186,5 @@ def notebook_source():
     )
 
 
-def build():
-    users, events = generate_data()
-    (ROOT / f"expected-results-{FIXTURE_VERSION}.json").write_text(
-        json.dumps(expected_results(users, events), indent=2) + "\n", encoding="utf-8"
-    )
-    notebook = {
-        "nbformat": 4, "nbformat_minor": 5,
-        "metadata": {
-            "dependencies": {"lakehouse": {
-                "default_lakehouse": LAKEHOUSES["bronze"],
-                "default_lakehouse_name": "ProductBronze",
-                "default_lakehouse_workspace_id": WORKSPACE_ID,
-                "known_lakehouses": [{"id": LAKEHOUSES["bronze"]}],
-            }},
-            "language_info": {"name": "python"},
-            "kernel_info": {"name": "synapse_pyspark", "jupyter_kernel_name": None},
-            "sessionKeepAliveTimeout": 0,
-        },
-        "cells": [{
-            "cell_type": "code", "execution_count": None, "outputs": [],
-            "metadata": {"microsoft": {"language": "python", "language_group": "synapse_pyspark"}},
-            "source": notebook_source().splitlines(keepends=True),
-        }],
-    }
-    folder = ROOT / "ProductAnalytics_Build.Notebook"
-    folder.mkdir(exist_ok=True)
-    platform = {
-        "$schema": "https://developer.microsoft.com/json-schemas/fabric/gitIntegration/platformProperties/2.0.0/schema.json",
-        "metadata": {"type": "Notebook", "displayName": "ProductAnalytics_Build"},
-        "config": {"version": "2.0", "logicalId": "00000000-0000-4000-8000-000000000006"},
-    }
-    (folder / ".platform").write_text(json.dumps(platform, indent=2), encoding="utf-8")
-    (folder / "notebook-content.ipynb").write_text(json.dumps(notebook, indent=2), encoding="utf-8")
-    print(json.dumps(expected_results(users, events), indent=2))
-
-
 if __name__ == "__main__":
-    argparse.ArgumentParser(description="Build synthetic raw-only Product Analytics notebook").parse_args()
-    build()
+    raise SystemExit("Generate notebooks with python tools\\build_notebooks.py from the repository root.")

@@ -1,0 +1,10 @@
+{
+  "workspace_id": "00000000-0000-4000-8000-000000000001",
+  "bronze_id": "00000000-0000-4000-8000-000000000002",
+  "silver_id": "00000000-0000-4000-8000-000000000003",
+  "identity_id": "00000000-0000-4000-8000-000000000005",
+  "sources_json": "[{\"tenant_id\":\"tenant_a\",\"users_table\":\"product_users_tenant_a\",\"events_table\":\"product_events_tenant_a\"},{\"tenant_id\":\"tenant_b\",\"users_table\":\"product_users_tenant_b\",\"events_table\":\"product_events_tenant_b\"},{\"tenant_id\":\"tenant_c\",\"users_table\":\"product_users_tenant_c\",\"events_table\":\"product_events_tenant_c\"}]",
+  "pii_policy_version": "english-v2-ai-functions-exact-spans-v1",
+  "pii_model": "gpt-5-mini",
+  "allow_synthetic_overwrite": false
+}

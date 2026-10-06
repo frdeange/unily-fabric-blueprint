@@ -12,7 +12,7 @@ Public reference implementation for synthetic multi-tenant product analytics.
 This is the existing lab baseline, not a production deployment framework.
 Workspace, lakehouse and logical item references are fictitious example IDs.
 The code intentionally rejects execution with these example values.
-External configuration and readable notebook cells are the next changes.
+Notebooks read validated runtime configuration and expose documented phases.
 Gold publication, incremental ingestion, and production runtime identity are
 not implemented.
 
@@ -22,6 +22,7 @@ not implemented.
 - `src/product_analytics/`: RAW generator, identity phase, event phase, and exact-span masking.
 - `tests/`: standard-library tests using synthetic data; no Fabric access.
 - `tools/`: reproducibility and repository-content checks.
+- `config/product-analytics.example.json`: non-executable configuration contract.
 - `.github/workflows/ci.yml`: read-only CI, without Fabric credentials.
 - `.github/workflows/verify-fabric.yml`: manually approved OIDC connection check.
 
@@ -32,6 +33,60 @@ Support will follow the same domain layout when its sanitized definitions are
 added. Do not add empty placeholder folders or duplicate code for dev/pre/prod.
 Environment references belong in private configuration, not domain folders.
 Shared code will go in `src/shared/` when there is an actual shared consumer.
+
+## Runtime configuration
+
+Both notebooks load the active values of a same-workspace Variable Library
+named `ProductAnalytics_Config` using NotebookUtils. No fallback environment
+or configuration is embedded in the generated code cells. Configure these
+variables before running:
+
+| Variable | Fabric type | Purpose |
+| --- | --- | --- |
+| `workspace_id` | String | Workspace containing all three lakehouses. |
+| `bronze_id` | String | RAW lakehouse ID. |
+| `silver_id` | String | Protected events lakehouse ID. |
+| `identity_id` | String | Mapping and restricted audit lakehouse ID. |
+| `sources_json` | String | JSON array of tenant/user-table/event-table entries. |
+| `pii_policy_version` | String | Version label matching the reviewed PII policy. |
+| `pii_model` | String | Fabric AI Functions deployment name. |
+| `allow_synthetic_overwrite` | Boolean | Explicit opt-in for RAW fixture overwrite; normally false. |
+
+The public example defines the contract, not a deployment-ready library item.
+Real values must be supplied privately in Fabric. The library has not been
+created or published by this PR. Add its sanitized item definition in a later
+approved deployment change; never commit populated environment value sets.
+Missing variables, invalid GUIDs, example IDs, duplicate lakehouse IDs, invalid
+source table names and duplicate tenant/table entries fail before data access.
+Configuration values are not printed by the configuration cell.
+
+`sources_json` supports one Product user namespace per tenant. Identity and
+event phases consume the same registry, so table names can change or more tenants
+can be onboarded without editing those phases. This does not provide arbitrary
+connector ingestion, multiple source namespaces per tenant or incremental loads.
+The synthetic generator deliberately remains limited to the A/B/C fixture.
+Fixture companies, actions and test narratives remain versioned English test data,
+not environment configuration. The prompt/schema and masking code also remain
+reviewed code; changing a policy label alone does not change the detector.
+
+Notebooks no longer attach a default lakehouse through environment-bound metadata.
+All reads and writes use absolute paths built from validated configuration.
+Logical `.platform` IDs remain stable. Spark session/environment dependencies
+still need verification in Fabric before publication/execution is considered ready.
+
+Cells are separated into configuration, identity, event validation, PII processing
+and publication, with English Markdown and stable cell IDs. Run the entire
+notebook in order; manually rerunning publication cells is not a supported retry.
+The source registry is included in the batch fingerprint to avoid reusing a marker
+for a different set of input tables. This intentionally changes the fingerprint
+from the earlier lab baseline: an existing populated Silver table will be held
+for manual migration review, not silently reprocessed or overwritten. No reset
+or marker migration is automated in this change.
+
+NotebookUtils currently does not support Variable Library reads by service
+principals. Notebook execution remains delegated to the lab user; the GitHub
+OIDC identity is for publication, not processing. This limitation must be resolved
+before scheduling these notebooks with a service identity.
 
 The current deployment allowlist still includes only the two Product notebooks.
 Adding another item requires explicitly extending that allowlist and its tests.
@@ -106,8 +161,8 @@ No tenant setting is changed by this setup.
 After merging this foundation, run **Verify Fabric connection** from `main`
 and approve the pending `dev` environment gate. This verifies authentication and
 workspace access without publishing, deleting or running items. Deployment is
-still unimplemented and must wait for private environment binding of notebook
-references.
+still unimplemented and must wait for private Variable Library setup and Spark
+dependency verification.
 
 Do not commit credentials, user mappings, lab results, customer data, or notebook
 outputs. Synthetic test strings are permitted. Real environment identifiers
