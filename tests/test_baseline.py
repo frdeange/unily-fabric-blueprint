@@ -27,7 +27,7 @@ class BaselineTests(unittest.TestCase):
 
     def test_generator_has_no_downstream_logic(self):
         source = notebook_source()
-        for forbidden in ("user_key", "gold_", "map_user_identity"):
+        for forbidden in ("user_key", "gold_", "user_identity_map", "vault_workspace_id"):
             self.assertNotIn(forbidden, source)
 
     def test_operational_notebook_is_self_contained(self):

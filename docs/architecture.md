@@ -109,13 +109,23 @@ Patterns:
 | Deployment identity | `SP-Unily-Deploy-<Env>` | `SP-Unily-Deploy-Dev` |
 | Fabric capacity (Azure, production only) | `fcunily<tier>` (lowercase alphanumeric) | `fcunilydata`, `fcunilyanalytics` |
 | GitHub Environment | `<env>` | `dev` |
-| Environment secret | `<DOMAIN>_RUNTIME_CONFIG_JSON` | `PRODUCT_RUNTIME_CONFIG_JSON` |
+| Environment settings (no IDs) | `config/environments/<env>/<domain>.json` | `config/environments/dev/product-analytics.json` |
 | Git branch | `<feature\|fix\|maintenance\|docs>/<issue>-<slug>` | `docs/10-architecture-naming` |
 
-Repository layout for Fabric items will follow
-`fabric/<layer>/<domain>/<type>/<Name>.<FabricType>/` (for example
-`fabric/data/shared/lakehouses/Gold.Lakehouse/`). It is introduced with dev
-workspace provisioning (#12); until then the current layout remains valid.
+Fabric items live in `fabric/<layer>/<domain>/<type>/<Name>.<FabricType>/`
+(for example `fabric/data/shared/lakehouses/Gold.Lakehouse/`). The layer folder
+selects the target workspace. Deployment resolves workspaces and item IDs by
+name at run time, so no real identifier is stored in the repository or in
+GitHub secrets.
+
+Current tables (all in the `product` schema of schema-enabled lakehouses):
+
+| Workspace | Lakehouse | Tables / files |
+| --- | --- | --- |
+| Data | Bronze | `users_<tenant>`, `events_<tenant>` (RAW, one pair per tenant) |
+| Data | Silver | `usage_events` (pseudonymous, PII-masked) |
+| Data | Gold | empty until #13 |
+| Vault | Identity | `user_identity_map`; restricted audit under `Files/product/validation/` |
 
 ## 4. Access model
 
@@ -138,6 +148,17 @@ workspace provisioning (#12); until then the current layout remains valid.
 | Topic | Status |
 | --- | --- |
 | Direct Lake with RLS reading Gold in another workspace (direct or OneLake shortcut) | **Unverified** (#11) |
-| Identity that runs Bronze-to-Silver across Data and Vault. NotebookUtils Variable Library reads do not support service principals today. | **Unverified** (#12) |
-| Schema-enabled lakehouses with Direct Lake and deployment tooling | **Unverified** (#12) |
+| Identity that runs Bronze-to-Silver across Data and Vault. NotebookUtils Variable Library reads do not support service principals today. | Lab: the delegated lab user, admin of the three workspaces. Production identity **unresolved** |
+| Schema-enabled lakehouses with deployment tooling | Created by `fabric-cicd`; first write to the `product` schema validated in #16. Direct Lake pending (#11) |
 | OneLake security as an alternative or complement to Vault | Not evaluated |
+
+## 6. Lab deviations
+
+- No Entra security groups yet: the lab administrator owns the workspaces and
+  the deployment service principal is a direct Contributor.
+- Workspaces are provisioned locally by an administrator with
+  `python tools/provision_environment.py` (plan by default, `--apply` to
+  change). It is idempotent and never deletes workspaces or role assignments.
+- All environments of the lab share one F2 capacity. The Data/Analytics split
+  allows separate capacities in production without moving items.
+- Workspace folders are not published (`disable_workspace_folder_publish`).

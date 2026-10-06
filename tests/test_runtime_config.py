@@ -10,14 +10,14 @@ from unittest.mock import Mock, patch
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src" / "product_analytics"))
-from runtime_config import FIELDS, LIBRARY_NAME, load_runtime_config, validate_config
+from runtime_config import FIELDS, ID_FIELDS, LIBRARY_NAME, load_runtime_config, onelake_table, validate_config
 from tools.build_notebooks import code_sections, notebook_cells
 import build_product_analytics
 
 
 def valid_config():
     values = json.loads((ROOT / "config" / "product-analytics.example.json").read_text())
-    for name in ("workspace_id", "bronze_id", "silver_id", "identity_id"):
+    for name in ID_FIELDS:
         values[name] = str(uuid.uuid4())
     return values
 
@@ -36,7 +36,7 @@ class RuntimeConfigTests(unittest.TestCase):
         config = load_runtime_config(utilities)
         utilities.variableLibrary.getLibrary.assert_called_once_with(LIBRARY_NAME)
         self.assertEqual(library.getVariable.call_count, len(FIELDS))
-        self.assertEqual(config["sources"][0]["users_table"], "product_users_tenant_a")
+        self.assertEqual(config["sources"][0]["users_table"], "users_tenant_a")
         library.getVariable.side_effect = RuntimeError("missing variable")
         with self.assertRaisesRegex(RuntimeError, "missing variable"):
             load_runtime_config(utilities)
@@ -58,10 +58,11 @@ class RuntimeConfigTests(unittest.TestCase):
         baseline = valid_config()
         invalid = []
         missing = dict(baseline)
-        del missing["workspace_id"]
+        del missing["data_workspace_id"]
         invalid.append(missing)
         for field, value in (
-            ("workspace_id", ""), ("bronze_id", baseline["identity_id"]),
+            ("data_workspace_id", ""), ("bronze_id", baseline["identity_id"]),
+            ("vault_workspace_id", baseline["data_workspace_id"]),
             ("pii_model", ""), ("allow_synthetic_overwrite", "false"),
             ("sources_json", "[]"), ("sources_json", "null"),
             ("sources_json", "{}"), ("sources_json", "invalid"),
@@ -82,16 +83,32 @@ class RuntimeConfigTests(unittest.TestCase):
             with self.subTest(values=values), self.assertRaises(ValueError):
                 validate_config(values)
 
-    def test_generator_overwrite_guard_precedes_spark_access(self):
+    def test_generator_allows_initial_load_and_guards_overwrite(self):
+        mode = build_product_analytics.raw_load_mode
+        config = validate_config(valid_config())
+        self.assertEqual(mode(config, []), "initial_load")
         with self.assertRaisesRegex(RuntimeError, "overwrite is disabled"):
-            exec(build_product_analytics.SPARK_SOURCE, {
-                "CONFIG": {"allow_synthetic_overwrite": False},
-            })
+            mode(config, ["users_tenant_a"])
+        self.assertEqual(mode({**config, "allow_synthetic_overwrite": True}, ["users_tenant_a"]), "overwrite")
         with self.assertRaisesRegex(RuntimeError, "only the versioned A/B/C"):
-            exec(build_product_analytics.SPARK_SOURCE, {
-                "CONFIG": {"allow_synthetic_overwrite": True, "sources": [{"tenant_id": "tenant_d"}]},
-                "TENANTS": build_product_analytics.TENANTS,
-            })
+            mode({**config, "sources": [{"tenant_id": "tenant_d"}]}, [])
+        spark_source = build_product_analytics.SPARK_SOURCE
+        self.assertLess(spark_source.index("raw_load_mode("), spark_source.index(".write"))
+
+    def test_identity_and_audit_live_in_vault_and_tables_in_product_schema(self):
+        config = validate_config(valid_config())
+        path = onelake_table(config["vault_workspace_id"], config["identity_id"], "user_identity_map")
+        self.assertTrue(path.startswith(f"abfss://{config['vault_workspace_id']}@"))
+        self.assertTrue(path.endswith("/Tables/product/user_identity_map"))
+        source = ROOT / "src" / "product_analytics"
+        identity = (source / "identity_phase.py").read_text()
+        silver = (source / "silver_phase.py").read_text()
+        self.assertIn('MAP_PATH = onelake_table(VAULT, CONFIG["identity_id"]', identity)
+        self.assertIn('AUDIT = onelake_files(VAULT, CONFIG["identity_id"]', silver)
+        self.assertIn('OUTPUT = onelake_table(DATA, CONFIG["silver_id"]', silver)
+        for module in (identity, silver):
+            self.assertNotIn("abfss://", module)
+            self.assertIn('mode("errorifexists")', module)
 
     def test_cells_are_ordered_and_independently_syntactic(self):
         for name, sections in code_sections().items():

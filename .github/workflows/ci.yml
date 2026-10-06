@@ -35,6 +35,6 @@ jobs:
       - name: Check generated notebook consistency
         run: python tools/build_notebooks.py --check
       - name: Check Variable Library contract
-        run: python tools/prepare_product_deployment.py --check-template
+        run: python tools/prepare_deployment.py --check-template
       - name: Run synthetic unit tests
         run: python -m unittest discover -s tests -v

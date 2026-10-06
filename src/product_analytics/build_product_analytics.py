@@ -117,18 +117,29 @@ def split_source_rows(rows, tenant_index):
     return partitions
 
 
-SPARK_SOURCE = '''
-if not CONFIG["allow_synthetic_overwrite"]:
-    raise RuntimeError("Synthetic RAW overwrite is disabled in runtime configuration")
-if {source["tenant_id"] for source in CONFIG["sources"]} != {tenant[0] for tenant in TENANTS}:
-    raise RuntimeError("The synthetic generator supports only the versioned A/B/C fixture")
+def raw_load_mode(config, existing_tables):
+    """Initial load into empty Bronze is allowed; replacing existing RAW needs the explicit flag."""
+    if {source["tenant_id"] for source in config["sources"]} != {tenant[0] for tenant in TENANTS}:
+        raise RuntimeError("The synthetic generator supports only the versioned A/B/C fixture")
+    if not existing_tables:
+        return "initial_load"
+    if not config["allow_synthetic_overwrite"]:
+        raise RuntimeError(
+            "RAW tables already exist and synthetic overwrite is disabled in runtime configuration: "
+            + ", ".join(sorted(existing_tables)))
+    return "overwrite"
 
+
+SPARK_SOURCE = '''
+from delta.tables import DeltaTable
 from pyspark.sql import functions as F
 
-users, event_rows = generate_data()
-
 def location(table):
-    return f"abfss://{WORKSPACE_ID}@onelake.dfs.fabric.microsoft.com/{BRONZE_ID}/Tables/{table}"
+    return onelake_table(DATA_WORKSPACE_ID, BRONZE_ID, table)
+
+raw_tables = [source[name] for source in CONFIG["sources"] for name in ("users_table", "events_table")]
+LOAD_MODE = raw_load_mode(CONFIG, [t for t in raw_tables if DeltaTable.isDeltaTable(spark, location(t))])
+users, event_rows = generate_data()
 
 user_schema = "tenant_id string, source_user_id string, display_name string, email string"
 event_schema = "event_id string, tenant_id string, source_user_id string, feature_id string, occurred_at string, event_type string, duration_seconds long, free_text string, text_language string"
@@ -141,7 +152,7 @@ for tenant_id, _, _, _ in TENANTS:
     raw_events = spark.createDataFrame(event_sources[tenant_id], event_schema)
     bronze_evidence[tenant_id] = {}
     for name, df in (("users", raw_users), ("events", raw_events)):
-        landing = f"abfss://{WORKSPACE_ID}@onelake.dfs.fabric.microsoft.com/{BRONZE_ID}/Files/landing/{tenant_id}/product/{name}"
+        landing = onelake_files(DATA_WORKSPACE_ID, BRONZE_ID, f"landing/{tenant_id}/{name}")
         df.write.mode("overwrite").json(landing)
         landed = spark.read.schema(df.schema).json(landing)
         assert landed.filter(F.col("tenant_id") != tenant_id).count() == 0
@@ -162,6 +173,7 @@ for tenant_id, _, _, _ in TENANTS:
 
 evidence = {
     "purpose": "Synthetic raw inputs only; no downstream processing",
+    "load_mode": LOAD_MODE,
     "synthetic_only": True,
     "fixture_version": FIXTURE_VERSION,
     "raw_events": len(event_rows),
@@ -169,7 +181,7 @@ evidence = {
     "bronze_separate_sources": bronze_evidence,
 }
 spark.createDataFrame([(json.dumps(evidence, sort_keys=True),)], "value string").coalesce(1).write.mode("overwrite").text(
-    f"abfss://{WORKSPACE_ID}@onelake.dfs.fabric.microsoft.com/{BRONZE_ID}/Files/validation/{FIXTURE_VERSION}"
+    onelake_files(DATA_WORKSPACE_ID, BRONZE_ID, f"validation/{FIXTURE_VERSION}")
 )
 print(json.dumps(evidence, indent=2))
 '''
@@ -178,11 +190,11 @@ print(json.dumps(evidence, indent=2))
 def notebook_source():
     return (
         "import json\nimport random\nfrom datetime import datetime, timedelta\n"
-        'WORKSPACE_ID = CONFIG["workspace_id"]\nBRONZE_ID = CONFIG["bronze_id"]\n'
+        'DATA_WORKSPACE_ID = CONFIG["data_workspace_id"]\nBRONZE_ID = CONFIG["bronze_id"]\n'
         f"TENANTS = {TENANTS!r}\nFEATURES = {FEATURES!r}\n"
         f"FIXTURE_VERSION = {FIXTURE_VERSION!r}\nRAW_TEXT_CASES = {RAW_TEXT_CASES!r}\n\n"
         + inspect.getsource(add_raw_text) + "\n" + inspect.getsource(generate_data) + "\n"
-        + inspect.getsource(split_source_rows) + SPARK_SOURCE
+        + inspect.getsource(split_source_rows) + "\n" + inspect.getsource(raw_load_mode) + SPARK_SOURCE
     )
 
 

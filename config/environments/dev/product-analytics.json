@@ -1,9 +1,4 @@
 {
-  "data_workspace_id": "00000000-0000-4000-8000-000000000001",
-  "vault_workspace_id": "00000000-0000-4000-8000-000000000004",
-  "bronze_id": "00000000-0000-4000-8000-000000000002",
-  "silver_id": "00000000-0000-4000-8000-000000000003",
-  "identity_id": "00000000-0000-4000-8000-000000000005",
   "allow_synthetic_overwrite": false,
   "pii_model": "gpt-5-mini",
   "pii_policy_version": "english-v2-ai-functions-exact-spans-v1",

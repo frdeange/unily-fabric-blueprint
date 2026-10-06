@@ -8,11 +8,17 @@ import notebookutils
 from delta.tables import DeltaTable
 from pyspark.sql import functions as F
 
-BASE = f'abfss://{CONFIG["workspace_id"]}@onelake.dfs.fabric.microsoft.com'
-BRONZE = BASE + "/" + CONFIG["bronze_id"]
-IDENTITY = BASE + "/" + CONFIG["identity_id"]
-OUTPUT = BASE + "/" + CONFIG["silver_id"] + "/Tables/product_events"
-AUDIT = IDENTITY + "/Files/validation/english_v2_silver"
+DATA = CONFIG["data_workspace_id"]
+VAULT = CONFIG["vault_workspace_id"]
+OUTPUT = onelake_table(DATA, CONFIG["silver_id"], "usage_events")
+OUTPUT_SCHEMA = (
+    "event_id string, tenant_id string, user_key string, feature_id string, occurred_at timestamp, "
+    "event_date date, event_type string, duration_seconds long, free_text string, text_language string, "
+    "pii_status string, pii_entity_count long, pii_policy_version string, pii_model string, "
+    "processing_run_id string"
+)
+# Restricted audit holds source text and model responses, so it lives in Vault.
+AUDIT = onelake_files(VAULT, CONFIG["identity_id"], "validation/silver")
 POLICY = CONFIG["pii_policy_version"]
 MODEL = CONFIG["pii_model"]
 RUN = str(uuid.uuid4())
@@ -32,7 +38,7 @@ raw_columns = {"event_id", "tenant_id", "source_user_id", "feature_id",
                "occurred_at", "event_type", "duration_seconds", "free_text", "text_language"}
 for source in CONFIG["sources"]:
     tenant = source["tenant_id"]
-    path = BRONZE + "/Tables/" + source["events_table"]
+    path = onelake_table(DATA, CONFIG["bronze_id"], source["events_table"])
     versions[tenant] = delta_version(path)
     df = spark.read.format("delta").option("versionAsOf", versions[tenant]).load(path)
     if set(df.columns) != raw_columns:
@@ -48,7 +54,7 @@ empty(raw.groupBy("tenant_id", "event_id").count().filter("count > 1"), "Duplica
 empty(raw.filter(F.col("duration_seconds").isNull() | (F.col("duration_seconds") < 0)), "Invalid duration")
 empty(raw.filter(F.col("free_text").isNotNull() & (F.col("free_text") != "") &
                  (F.col("text_language").isNull() | (F.col("text_language") != "en"))), "Expected English text")
-map_path = IDENTITY + "/Tables/map_user_identity"
+map_path = onelake_table(VAULT, CONFIG["identity_id"], "user_identity_map")
 map_version = delta_version(map_path)
 mapping = spark.read.format("delta").option("versionAsOf", map_version).load(map_path)
 empty(mapping.groupBy(*KEYS).count().filter("count > 1"), "Duplicate mapping")
@@ -68,7 +74,10 @@ fingerprint = hashlib.sha256(json.dumps({
     "map_version": map_version, "policy": POLICY,
     "prompt": PROMPT, "model": MODEL,
 }, sort_keys=True).encode()).hexdigest()
-marker = AUDIT + "/completed-" + fingerprint + ".json"
+# First run in a new environment: create the empty Silver table once, never replace it.
+if not DeltaTable.isDeltaTable(spark, OUTPUT):
+    spark.createDataFrame([], OUTPUT_SCHEMA).write.format("delta").mode("errorifexists").save(OUTPUT)
+marker =  AUDIT + "/completed-" + fingerprint + ".json"
 if notebookutils.fs.exists(marker):
     previous = json.loads(notebookutils.fs.head(marker, 1000000))
     if previous["silver_delta_version"] != delta_version(OUTPUT):
@@ -88,7 +97,7 @@ evidence = {
     "policy": POLICY, "prompt_sha256": hashlib.sha256(PROMPT.encode()).hexdigest(),
     "requested_model": MODEL, "input_rows": raw.count(), "submitted_texts": len(documents),
     "runtime_identity": "Notebook job submitter; built-in Fabric authentication",
-    "security_note": "Logical separation within the same workspace; workspace administrators retain access",
+    "security_note": "Events in Data; mapping and restricted audit in the separate Vault workspace",
 }
 @contextmanager
 def audit_failure():

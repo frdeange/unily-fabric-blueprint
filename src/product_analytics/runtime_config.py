@@ -5,18 +5,26 @@ import re
 import uuid
 
 LIBRARY_NAME = "ProductAnalytics_Config"
-FIELDS = {
-    "workspace_id", "bronze_id", "silver_id", "identity_id", "sources_json",
-    "pii_policy_version", "pii_model", "allow_synthetic_overwrite",
-}
+ID_FIELDS = ("data_workspace_id", "vault_workspace_id", "bronze_id", "silver_id", "identity_id")
+SETTING_FIELDS = {"sources_json", "pii_policy_version", "pii_model", "allow_synthetic_overwrite"}
+FIELDS = set(ID_FIELDS) | SETTING_FIELDS
+SCHEMA = "product"
 TABLE_NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_]*\Z")
+
+
+def onelake_table(workspace_id, lakehouse_id, table):
+    return f"abfss://{workspace_id}@onelake.dfs.fabric.microsoft.com/{lakehouse_id}/Tables/{SCHEMA}/{table}"
+
+
+def onelake_files(workspace_id, lakehouse_id, path):
+    return f"abfss://{workspace_id}@onelake.dfs.fabric.microsoft.com/{lakehouse_id}/Files/{SCHEMA}/{path}"
 
 
 def validate_config(values):
     if set(values) != FIELDS:
         raise ValueError("Runtime configuration fields do not match the contract")
     config = dict(values)
-    for name in ("workspace_id", "bronze_id", "silver_id", "identity_id"):
+    for name in ID_FIELDS:
         value = values[name]
         if not isinstance(value, str):
             raise ValueError(f"{name} must be a GUID string")
@@ -26,6 +34,9 @@ def validate_config(values):
         config[name] = value
     if len({config[name] for name in ("bronze_id", "silver_id", "identity_id")}) != 3:
         raise ValueError("Bronze, Silver and Identity must be distinct lakehouses")
+    # Re-identification data stays in a separate workspace (GDPR Art. 4(5)); see docs/architecture.md.
+    if config["data_workspace_id"] == config["vault_workspace_id"]:
+        raise ValueError("Data and Vault must be distinct workspaces")
     for name in ("pii_policy_version", "pii_model"):
         if not isinstance(values[name], str) or not values[name].strip():
             raise ValueError(f"{name} must be a nonempty string")
