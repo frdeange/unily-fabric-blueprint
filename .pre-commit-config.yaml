@@ -18,3 +18,9 @@ repos:
         language: system
         pass_filenames: false
         always_run: true
+      - id: library-consistency
+        name: Check Variable Library template
+        entry: python tools/prepare_product_deployment.py --check-template
+        language: system
+        pass_filenames: false
+        always_run: true

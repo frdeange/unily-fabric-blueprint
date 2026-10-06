@@ -5,7 +5,7 @@ import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-ALLOWED_ROOT_FILES = {"README.md", ".gitignore", ".pre-commit-config.yaml", "requirements-dev.txt"}
+ALLOWED_ROOT_FILES = {"README.md", ".gitignore", ".pre-commit-config.yaml", "requirements-dev.txt", "requirements-deploy.txt"}
 ALLOWED_DIRECTORIES = {"src", "tests", "tools", "fabric", ".github", "config"}
 PATTERNS = [
     re.compile(r"\b(?:gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,})\b"),
@@ -15,12 +15,13 @@ PATTERNS = [
 ]
 EXCLUDED = {".git", "__pycache__", ".venv", ".pytest_cache"}
 GUID = re.compile(r"\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b", re.I)
-EXAMPLE_GUIDS = {f"00000000-0000-4000-8000-{i:012d}" for i in range(1, 8)}
+EXAMPLE_GUIDS = {f"00000000-0000-4000-8000-{i:012d}" for i in range(1, 9)}
 
 EXPECTED_ITEMS = {
     Path("product-analytics") / "notebooks" / f"{name}.Notebook"
     for name in ("ProductAnalytics_Build", "ProductAnalytics_BronzeToSilver")
 }
+EXPECTED_ITEMS.add(Path("product-analytics") / "variable-libraries" / "ProductAnalytics_Config.VariableLibrary")
 
 
 def check_fabric_scope(root):

@@ -34,5 +34,7 @@ jobs:
         run: python -m pre_commit run --all-files --show-diff-on-failure
       - name: Check generated notebook consistency
         run: python tools/build_notebooks.py --check
+      - name: Check Variable Library contract
+        run: python tools/prepare_product_deployment.py --check-template
       - name: Run synthetic unit tests
         run: python -m unittest discover -s tests -v
