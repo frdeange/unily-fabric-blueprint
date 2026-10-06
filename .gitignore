@@ -10,5 +10,5 @@ __pycache__/
 *evidence*
 *mapping*.json
 expected-results*.json
-src/*.Notebook/
+src/**/*.Notebook/
 .pytest_cache/

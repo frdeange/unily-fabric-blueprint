@@ -3,7 +3,7 @@ import unittest
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src" / "product_analytics"))
 
 from pii_ai_functions import mask_response
 

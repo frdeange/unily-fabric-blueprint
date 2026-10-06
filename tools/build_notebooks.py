@@ -6,12 +6,12 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / "src"))
+sys.path.insert(0, str(ROOT / "src" / "product_analytics"))
 import build_product_analytics
 
 
 def sources():
-    source = ROOT / "src"
+    source = ROOT / "src" / "product_analytics"
     return {
         "ProductAnalytics_Build": build_product_analytics.notebook_source(),
         "ProductAnalytics_BronzeToSilver": (
@@ -27,7 +27,7 @@ def sources():
 def build(check=False):
     for name, source in sources().items():
         compile(source, name, "exec")
-        path = ROOT / "fabric" / f"{name}.Notebook" / "notebook-content.ipynb"
+        path = ROOT / "fabric" / "product-analytics" / "notebooks" / f"{name}.Notebook" / "notebook-content.ipynb"
         notebook = json.loads(path.read_text(encoding="utf-8"))
         cells = [cell for cell in notebook["cells"] if cell["cell_type"] == "code"]
         if len(cells) != 1:
@@ -40,7 +40,7 @@ def build(check=False):
             cell["source"] = source.splitlines(keepends=True)
             cell["execution_count"] = None
             cell["outputs"] = []
-            path.write_text(json.dumps(notebook, indent=2), encoding="utf-8")
+            path.write_text(json.dumps(notebook, indent=1) + "\n", encoding="utf-8")
     print("Notebook source consistency verified." if check else "Notebook code cells rebuilt.")
 
 
