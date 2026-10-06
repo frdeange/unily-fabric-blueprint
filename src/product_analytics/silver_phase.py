@@ -3,20 +3,18 @@ import hashlib
 import uuid
 from datetime import datetime, timezone
 from functools import reduce
+from contextlib import contextmanager
 import notebookutils
 from delta.tables import DeltaTable
 from pyspark.sql import functions as F
 
-BASE = "abfss://00000000-0000-4000-8000-000000000001@onelake.dfs.fabric.microsoft.com"
-if "00000000-" in BASE:
-    raise RuntimeError("Example configuration only; bind a real environment before execution")
-BRONZE = BASE + "/00000000-0000-4000-8000-000000000002"
-IDENTITY = BASE + "/00000000-0000-4000-8000-000000000005"
-OUTPUT = BASE + "/00000000-0000-4000-8000-000000000003/Tables/product_events"
+BASE = f'abfss://{CONFIG["workspace_id"]}@onelake.dfs.fabric.microsoft.com'
+BRONZE = BASE + "/" + CONFIG["bronze_id"]
+IDENTITY = BASE + "/" + CONFIG["identity_id"]
+OUTPUT = BASE + "/" + CONFIG["silver_id"] + "/Tables/product_events"
 AUDIT = IDENTITY + "/Files/validation/english_v2_silver"
-TENANTS = ["tenant_a", "tenant_b", "tenant_c"]
-POLICY = "english-v2-ai-functions-exact-spans-v1"
-MODEL = "gpt-5-mini"
+POLICY = CONFIG["pii_policy_version"]
+MODEL = CONFIG["pii_model"]
 RUN = str(uuid.uuid4())
 KEYS = ["tenant_id", "source_user_id"]
 notebookutils.fs.mkdirs(AUDIT)
@@ -32,8 +30,9 @@ versions = {}
 frames = []
 raw_columns = {"event_id", "tenant_id", "source_user_id", "feature_id",
                "occurred_at", "event_type", "duration_seconds", "free_text", "text_language"}
-for tenant in TENANTS:
-    path = BRONZE + "/Tables/product_events_" + tenant
+for source in CONFIG["sources"]:
+    tenant = source["tenant_id"]
+    path = BRONZE + "/Tables/" + source["events_table"]
     versions[tenant] = delta_version(path)
     df = spark.read.format("delta").option("versionAsOf", versions[tenant]).load(path)
     if set(df.columns) != raw_columns:
@@ -65,7 +64,8 @@ joined = joined.withColumn("occurred_at", F.to_timestamp("occurred_at"))
 empty(joined.filter(F.col("occurred_at").isNull()), "Invalid timestamp")
 
 fingerprint = hashlib.sha256(json.dumps({
-    "source_versions": versions, "map_version": map_version, "policy": POLICY,
+    "source_versions": versions, "source_registry": CONFIG["sources"],
+    "map_version": map_version, "policy": POLICY,
     "prompt": PROMPT, "model": MODEL,
 }, sort_keys=True).encode()).hexdigest()
 marker = AUDIT + "/completed-" + fingerprint + ".json"
@@ -90,7 +90,18 @@ evidence = {
     "runtime_identity": "Notebook job submitter; built-in Fabric authentication",
     "security_note": "Logical separation within the same workspace; workspace administrators retain access",
 }
-try:
+@contextmanager
+def audit_failure():
+    try:
+        yield
+    except Exception as error:
+        evidence["status"] = "failed"
+        evidence["error"] = {"type": type(error).__name__, "message": str(error)}
+        notebookutils.fs.put(AUDIT + "/failed-" + RUN + ".json", json.dumps(evidence, indent=2), False)
+        raise
+
+
+with audit_failure():
     import pandas as pd
     import synapse.ml.aifunc as aifunc
     frame = pd.DataFrame([{"text": d["free_text"]} for d in documents])
@@ -128,6 +139,8 @@ try:
     ).cache()
     assert staged.count() == raw.count()
     assert not {"source_user_id", "display_name", "email"} & set(staged.columns)
+
+with audit_failure():
     detail_id = DeltaTable.forPath(spark, OUTPUT).detail().first()["id"]
     # Publish only after the entire batch passes structural validation.
     staged.write.format("delta").mode("append").option("mergeSchema", "true").save(OUTPUT)
@@ -144,9 +157,4 @@ try:
             "tenant_id", "event_id", "free_text", "pii_status", "pii_entity_count").orderBy(
                 "tenant_id", "event_id").collect()]
     notebookutils.fs.put(marker, json.dumps(evidence, indent=2), False)
-except Exception as error:
-    evidence["status"] = "failed"
-    evidence["error"] = {"type": type(error).__name__, "message": str(error)}
-    notebookutils.fs.put(AUDIT + "/failed-" + RUN + ".json", json.dumps(evidence, indent=2), False)
-    raise
 print(json.dumps(evidence, indent=2))

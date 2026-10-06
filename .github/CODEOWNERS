@@ -12,6 +12,7 @@
 /src/shared/ @frdeange
 /tests/ @frdeange
 /tools/ @frdeange
+/config/ @frdeange
 /.github/workflows/ @frdeange
 /.pre-commit-config.yaml @frdeange
 /requirements-dev.txt @frdeange
