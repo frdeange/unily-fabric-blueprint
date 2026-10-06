@@ -52,10 +52,10 @@ variables before running:
 | `pii_model` | String | Fabric AI Functions deployment name. |
 | `allow_synthetic_overwrite` | Boolean | Explicit opt-in for RAW fixture overwrite; normally false. |
 
-The public example defines the contract, not a deployment-ready library item.
-Real values must be supplied privately in Fabric. The library has not been
-created or published by this PR. Add its sanitized item definition in a later
-approved deployment change; never commit populated environment value sets.
+The public example and matching Variable Library item define the contract.
+Real values are supplied through a private GitHub Environment Secret and
+resolved only in a temporary deployment directory, never in the checkout.
+Never commit populated environment value sets.
 Missing variables, invalid GUIDs, example IDs, duplicate lakehouse IDs, invalid
 source table names and duplicate tenant/table entries fail before data access.
 Configuration values are not printed by the configuration cell.
@@ -88,9 +88,9 @@ principals. Notebook execution remains delegated to the lab user; the GitHub
 OIDC identity is for publication, not processing. This limitation must be resolved
 before scheduling these notebooks with a service identity.
 
-The current deployment allowlist still includes only the two Product notebooks.
+The deployment allowlist includes the two Product notebooks and their configuration library.
 Adding another item requires explicitly extending that allowlist and its tests.
-There is no deployment discovery or semantic-model publication implemented yet.
+Semantic-model publication is not implemented yet.
 Folder organization does not grant permissions or isolate data.
 
 ## Contribution workflow
@@ -161,8 +161,37 @@ No tenant setting is changed by this setup.
 After merging this foundation, run **Verify Fabric connection** from `main`
 and approve the pending `dev` environment gate. This verifies authentication and
 workspace access without publishing, deleting or running items. Deployment is
-still unimplemented and must wait for private Variable Library setup and Spark
-dependency verification.
+is a separate manually approved workflow. Processing still requires delegated
+runtime/Spark verification and a review of the existing Silver completion marker.
+
+## Manual Product publication
+
+**Publish Product definitions** deploys only `ProductAnalytics_Config` and the
+two Product notebooks from approved `main` through the `dev` gate. It uses
+`fabric-cicd` 1.3.0 with Azure CLI OIDC credentials. It does not call orphan
+cleanup, create workspace folders, deploy lakehouses/models/agents, execute
+notebooks or refresh data. Existing notebook item IDs are verified after update.
+The deployment is not atomic; a failed publication may require a reviewed retry.
+
+Store the full runtime contract as `PRODUCT_RUNTIME_CONFIG_JSON` in `dev`
+Environment Secrets. The workspace must match `FABRIC_WORKSPACE_ID`, real
+lakehouse IDs must be distinct, and `allow_synthetic_overwrite` must be false.
+The reviewed source registry, model and policy values are included in that
+private contract. Temporary staging flattens the explicit item allowlist for
+publication; it never broadly scans/publishes the whole repository.
+An explicit `dev` value set is generated and activated by the package.
+
+After publication, definition readback checks notebook cell content, absence
+of outputs, configured library values and the active value set. It also checks
+that pre-existing item IDs survive and no unexpected items appear/disappear.
+This proves definition publication, not Spark execution, PII processing or
+unchanged table versions. Those require separate delegated validation.
+No completed marker is rewritten and no Silver/Identity data is reset.
+
+Private resolved files are removed with the temporary directory. Package debug
+file logging is disabled, and environment IDs are individually masked in Actions.
+Do not enable debug logs, upload resolved staging or publish request/response
+payloads as public workflow artifacts.
 
 Do not commit credentials, user mappings, lab results, customer data, or notebook
 outputs. Synthetic test strings are permitted. Real environment identifiers

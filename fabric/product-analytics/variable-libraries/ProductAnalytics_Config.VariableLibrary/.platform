@@ -1,0 +1,5 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/fabric/platform/platformProperties.json",
+  "metadata": {"type": "VariableLibrary", "displayName": "ProductAnalytics_Config"},
+  "config": {"version": "2.0", "logicalId": "00000000-0000-4000-8000-000000000008"}
+}

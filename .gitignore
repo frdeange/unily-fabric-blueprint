@@ -12,3 +12,4 @@ __pycache__/
 expected-results*.json
 src/**/*.Notebook/
 .pytest_cache/
+fabric_cicd*.log*
