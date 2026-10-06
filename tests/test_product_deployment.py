@@ -11,7 +11,7 @@ from unittest.mock import Mock, patch
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "tools"))
 from prepare_product_deployment import ITEMS, prepare, variables_definition
-from deploy_product import find_item, verify_readback
+from deploy_product import find_item, verify_readback, operation_endpoint, wait_operation
 
 
 def config():
@@ -22,6 +22,28 @@ def config():
 
 
 class ProductDeploymentTests(unittest.TestCase):
+    def test_regional_operation_location_uses_canonical_host(self):
+        operation = str(uuid.uuid4())
+        regional = f"https://regional.example.invalid/v1/operations/{operation}"
+        expected = f"https://api.fabric.microsoft.com/v1/operations/{operation}"
+        self.assertEqual(operation_endpoint({"x-ms-operation-id": operation, "Location": regional}), expected)
+        self.assertEqual(operation_endpoint({"Location": regional}), expected)
+        with self.assertRaises(ValueError):
+            operation_endpoint({"x-ms-operation-id": "invalid"})
+        with self.assertRaises(ValueError):
+            operation_endpoint({"Location": "https://example.invalid/arbitrary"})
+
+    @patch("deploy_product.time.sleep")
+    @patch("deploy_product.read_api")
+    def test_operation_polling_and_result(self, read, sleep):
+        endpoint = operation_endpoint({"x-ms-operation-id": str(uuid.uuid4())})
+        read.side_effect = [{"status": "Running"}, {"status": "Succeeded"}, {"definition": {}}]
+        self.assertEqual(wait_operation(Mock(), endpoint, 1), {"definition": {}})
+        self.assertEqual(read.call_args.args[1], endpoint + "/result")
+        read.side_effect = [{"status": "Failed"}]
+        with self.assertRaisesRegex(RuntimeError, "operation failed"):
+            wait_operation(Mock(), endpoint, 1)
+
     def test_staging_is_exact_scope_and_does_not_modify_checkout(self):
         with tempfile.TemporaryDirectory() as directory:
             target = Path(directory) / "items"

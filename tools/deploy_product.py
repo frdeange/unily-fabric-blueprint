@@ -5,13 +5,27 @@ import json
 import os
 import tempfile
 import time
+import uuid
 from pathlib import Path
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
+from urllib.parse import urlparse
 
 from prepare_product_deployment import ITEMS, ROOT, prepare
 
 API = "https://api.fabric.microsoft.com/v1"
+
+
+def operation_endpoint(headers):
+    operation_id = headers.get("x-ms-operation-id")
+    if not operation_id:
+        location = urlparse(headers["Location"])
+        segments = location.path.strip("/").split("/")
+        if len(segments) != 3 or segments[:2] != ["v1", "operations"]:
+            raise ValueError("Unexpected Fabric operation path")
+        operation_id = segments[2]
+    # Follow the operation ID through the canonical API, never a supplied host.
+    return f"{API}/operations/{uuid.UUID(operation_id)}"
 
 
 def read_api(credential, path, body=None):
@@ -26,7 +40,7 @@ def read_api(credential, path, body=None):
     try:
         with urlopen(request, timeout=90) as response:
             if response.status == 202:
-                location = response.headers["Location"]
+                location = operation_endpoint(response.headers)
                 delay = int(response.headers.get("Retry-After", "5"))
                 return wait_operation(credential, location, delay)
             return json.load(response)
