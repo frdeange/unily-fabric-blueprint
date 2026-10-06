@@ -5,28 +5,34 @@ def validate_runtime(config, spark_session):
     import synapse.ml.aifunc
     from delta.tables import DeltaTable
 
-    base = f'abfss://{config["workspace_id"]}@onelake.dfs.fabric.microsoft.com'
+    data, vault = config["data_workspace_id"], config["vault_workspace_id"]
     users = {"tenant_id", "source_user_id", "display_name", "email"}
     events = {"event_id", "tenant_id", "source_user_id", "feature_id", "occurred_at",
               "event_type", "duration_seconds", "free_text", "text_language"}
     inputs = []
     for source in config["sources"]:
         inputs.extend([
-            (config["bronze_id"], source["users_table"], users),
-            (config["bronze_id"], source["events_table"], events),
+            (data, config["bronze_id"], source["users_table"], users, True),
+            (data, config["bronze_id"], source["events_table"], events, True),
         ])
+    # Outputs may be absent before the first run; processing creates them once.
     inputs.extend([
-        (config["identity_id"], "map_user_identity", users | {"user_key"}),
-        (config["silver_id"], "product_events", {
+        (vault, config["identity_id"], "user_identity_map", users | {"user_key"}, False),
+        (data, config["silver_id"], "usage_events", {
             "event_id", "tenant_id", "user_key", "feature_id", "occurred_at",
             "event_date", "event_type", "duration_seconds", "free_text", "text_language",
             "pii_status", "pii_entity_count", "pii_policy_version", "pii_model",
             "processing_run_id",
-        }),
+        }, False),
     ])
     observations = []
-    for lakehouse, table, expected in inputs:
-        path = f"{base}/{lakehouse}/Tables/{table}"
+    for workspace, lakehouse, table, expected, required in inputs:
+        path = onelake_table(workspace, lakehouse, table)
+        if not DeltaTable.isDeltaTable(spark_session, path):
+            if required:
+                raise RuntimeError(f"Required input table is missing: {table}")
+            observations.append({"table": table, "status": "absent_until_first_run"})
+            continue
         version = int(DeltaTable.forPath(spark_session, path).history(1).first()["version"])
         frame = spark_session.read.format("delta").option("versionAsOf", version).load(path)
         if set(frame.columns) != expected:

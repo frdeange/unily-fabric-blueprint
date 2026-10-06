@@ -9,15 +9,14 @@ import notebookutils
 from delta.tables import DeltaTable
 from pyspark.sql import functions as F
 
-WORKSPACE = CONFIG["workspace_id"]
-BRONZE = CONFIG["bronze_id"]
-IDENTITY = CONFIG["identity_id"]
+DATA = CONFIG["data_workspace_id"]
+VAULT = CONFIG["vault_workspace_id"]
 SOURCES = {source["tenant_id"]: source["users_table"] for source in CONFIG["sources"]}
-BASE = f"abfss://{WORKSPACE}@onelake.dfs.fabric.microsoft.com"
-MAP_PATH = f"{BASE}/{IDENTITY}/Tables/map_user_identity"
+MAP_PATH = onelake_table(VAULT, CONFIG["identity_id"], "user_identity_map")
 KEYS = ["tenant_id", "source_user_id"]
 VALUE_COLUMNS = ["display_name", "email"]
 MAP_COLUMNS = KEYS + ["user_key"] + VALUE_COLUMNS
+MAP_SCHEMA = "tenant_id string, source_user_id string, user_key string, display_name string, email string"
 
 def require_empty(df, reason):
     if df.limit(1).count():
@@ -34,7 +33,7 @@ def validate(df, columns, label):
 frames = []
 source_versions = {}
 for tenant, table in SOURCES.items():
-    path = f"{BASE}/{BRONZE}/Tables/{table}"
+    path = onelake_table(DATA, CONFIG["bronze_id"], table)
     version = DeltaTable.forPath(spark, path).history(1).first()["version"]
     source_versions[table] = int(version)
     raw = spark.read.format("delta").option("versionAsOf", version).load(path)
@@ -46,7 +45,10 @@ for tenant, table in SOURCES.items():
 incoming = reduce(lambda a, b: a.unionByName(b), frames)
 validate(incoming, KEYS + VALUE_COLUMNS, "incoming")
 
-existing = spark.read.format("delta").load(MAP_PATH).select(*MAP_COLUMNS).cache()
+# First run in a new environment: create the empty mapping table once, never replace it.
+if not DeltaTable.isDeltaTable(spark, MAP_PATH):
+    spark.createDataFrame([], MAP_SCHEMA).write.format("delta").mode("errorifexists").save(MAP_PATH)
+existing =  spark.read.format("delta").load(MAP_PATH).select(*MAP_COLUMNS).cache()
 validate(existing, MAP_COLUMNS, "mapping")
 require_empty(existing.groupBy("user_key").count().filter("count > 1"), "Duplicate identity token")
 require_empty(existing.filter(~F.col("tenant_id").isin(list(SOURCES))), "Unexpected mapping tenant")
@@ -97,12 +99,12 @@ evidence = {
     "mapping_after": len(actual), "existing_keys_preserved": True,
     "mapping_keys_sha256": hashlib.sha256(json.dumps(digest_rows).encode()).hexdigest(),
     "mapping_delta_version": int(DeltaTable.forPath(spark, MAP_PATH).history(1).first()["version"]),
-    "writes": ["ProductIdentity.map_user_identity", "ProductIdentity.Files/validation/identity"],
+    "writes": ["Vault Identity product.user_identity_map", "Vault Identity Files/product/validation/identity"],
     "silver_or_gold_written": False, "raw_generator_called": False,
     "concurrency": "Single manually launched writer; concurrent execution not supported in this PoC",
     "source_system_scope": "One Product user namespace per tenant in A/B/C; not cross-source resolution",
 }
-evidence_path = f"{BASE}/{IDENTITY}/Files/validation/identity"
+evidence_path = onelake_files(VAULT, CONFIG["identity_id"], "validation/identity")
 notebookutils.fs.mkdirs(evidence_path)
 notebookutils.fs.put(evidence_path + "/" + evidence["run_id"] + ".json", json.dumps(evidence, indent=2), False)
 print(json.dumps(evidence, indent=2))

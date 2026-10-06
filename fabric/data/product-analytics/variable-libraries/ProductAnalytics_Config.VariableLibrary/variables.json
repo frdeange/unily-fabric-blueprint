@@ -12,6 +12,11 @@
       "value": "00000000-0000-4000-8000-000000000002"
     },
     {
+      "name": "data_workspace_id",
+      "type": "String",
+      "value": "00000000-0000-4000-8000-000000000001"
+    },
+    {
       "name": "identity_id",
       "type": "String",
       "value": "00000000-0000-4000-8000-000000000005"
@@ -34,12 +39,12 @@
     {
       "name": "sources_json",
       "type": "String",
-      "value": "[{\"tenant_id\":\"tenant_a\",\"users_table\":\"product_users_tenant_a\",\"events_table\":\"product_events_tenant_a\"},{\"tenant_id\":\"tenant_b\",\"users_table\":\"product_users_tenant_b\",\"events_table\":\"product_events_tenant_b\"},{\"tenant_id\":\"tenant_c\",\"users_table\":\"product_users_tenant_c\",\"events_table\":\"product_events_tenant_c\"}]"
+      "value": "[{\"tenant_id\":\"tenant_a\",\"users_table\":\"users_tenant_a\",\"events_table\":\"events_tenant_a\"},{\"tenant_id\":\"tenant_b\",\"users_table\":\"users_tenant_b\",\"events_table\":\"events_tenant_b\"},{\"tenant_id\":\"tenant_c\",\"users_table\":\"users_tenant_c\",\"events_table\":\"events_tenant_c\"}]"
     },
     {
-      "name": "workspace_id",
+      "name": "vault_workspace_id",
       "type": "String",
-      "value": "00000000-0000-4000-8000-000000000001"
+      "value": "00000000-0000-4000-8000-000000000004"
     }
   ]
 }

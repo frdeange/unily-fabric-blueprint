@@ -15,13 +15,15 @@ PATTERNS = [
 ]
 EXCLUDED = {".git", "__pycache__", ".venv", ".pytest_cache"}
 GUID = re.compile(r"\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b", re.I)
-EXAMPLE_GUIDS = {f"00000000-0000-4000-8000-{i:012d}" for i in range(1, 9)}
+EXAMPLE_GUIDS = {f"00000000-0000-4000-8000-{i:012d}" for i in range(1, 13)}
 
 EXPECTED_ITEMS = {
-    Path("product-analytics") / "notebooks" / f"{name}.Notebook"
+    Path("data") / "product-analytics" / "notebooks" / f"{name}.Notebook"
     for name in ("ProductAnalytics_Build", "ProductAnalytics_BronzeToSilver")
-}
-EXPECTED_ITEMS.add(Path("product-analytics") / "variable-libraries" / "ProductAnalytics_Config.VariableLibrary")
+} | {
+    Path("data") / "product-analytics" / "variable-libraries" / "ProductAnalytics_Config.VariableLibrary",
+    Path("vault") / "shared" / "lakehouses" / "Identity.Lakehouse",
+} | {Path("data") / "shared" / "lakehouses" / f"{name}.Lakehouse" for name in ("Bronze", "Silver", "Gold")}
 
 
 def check_fabric_scope(root):

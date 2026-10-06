@@ -2,11 +2,10 @@
 # Independent owner approval is not required in this solo-owner lab.
 * @frdeange
 
-/fabric/product-analytics/ @frdeange
-/fabric/product-analytics/notebooks/ @frdeange
-/fabric/product-analytics/semantic-models/ @frdeange
-/fabric/product-analytics/variable-libraries/ @frdeange
-/fabric/support/ @frdeange
+/fabric/ @frdeange
+/fabric/data/ @frdeange
+/fabric/analytics/ @frdeange
+/fabric/vault/ @frdeange
 /src/product_analytics/ @frdeange
 /src/support/ @frdeange
 /src/shared/ @frdeange

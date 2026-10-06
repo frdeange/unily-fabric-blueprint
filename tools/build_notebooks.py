@@ -9,6 +9,8 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src" / "product_analytics"))
 import build_product_analytics
 
+NOTEBOOKS = ROOT / "fabric" / "data" / "product-analytics" / "notebooks"
+
 
 def code_sections():
     source = ROOT / "src" / "product_analytics"
@@ -66,11 +68,13 @@ DESCRIPTIONS = {
         "not an ingestion connector. Source table names come from the validated registry."
     ),
     "RAW publication and summary": (
-        "Requires explicit `allow_synthetic_overwrite=true` and the exact A/B/C tenant "
-        "set before writing. Overwrites synthetic RAW inputs only; never run as part of deployment."
+        "Requires the exact A/B/C tenant set. Loads empty Bronze `product` tables once; "
+        "replacing existing RAW requires explicit `allow_synthetic_overwrite=true`. "
+        "Writes synthetic RAW inputs only; never run as part of deployment."
     ),
     "Phase 1 - Tenant-scoped identity resolution": (
-        "Read registered user tables and create UUID keys only for new "
+        "Read registered Bronze user tables and write the mapping to the Vault workspace. "
+        "Create UUID keys only for new "
         "(tenant_id, source_user_id) pairs. Preserve existing keys. One user namespace "
         "per tenant and a single manually launched writer are supported."
     ),
@@ -85,8 +89,8 @@ DESCRIPTIONS = {
         "publication. `processed` is not a guarantee that text contains no remaining PII."
     ),
     "Phase 4 - Silver publication and summary": (
-        "Append the validated batch, verify persisted rows and write the completion "
-        "marker to Identity storage. Errors are audited and raised. Publication and "
+        "Append the validated batch to Silver, verify persisted rows and write the completion "
+        "marker to restricted Vault storage. Errors are audited and raised. Publication and "
         "the audit marker are not a single atomic transaction; recovery is manual."
     ),
 }
@@ -127,7 +131,7 @@ def notebook_cells(name, sections):
 
 def build(check=False):
     for name, sections in code_sections().items():
-        path = ROOT / "fabric" / "product-analytics" / "notebooks" / f"{name}.Notebook" / "notebook-content.ipynb"
+        path = NOTEBOOKS / f"{name}.Notebook" / "notebook-content.ipynb"
         notebook = json.loads(path.read_text(encoding="utf-8"))
         expected = notebook_cells(name, sections)
         if check:
