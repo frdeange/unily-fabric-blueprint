@@ -37,10 +37,17 @@ and code in English.
 | `✨ feature`, `🐛 bug`, `🧹 maintenance`, `📚 documentation` | Issue type |
 | `📊 product-analytics`, `🛟 support`, `🚀 ci-cd`, `🧠 semantic-models`, `🔐 security` | Area (`Repository` adds no area label) |
 | `⚠️ data-change` | Fabric/data impact changes, deletes or regenerates data |
+| `🗄️ data`, `📈 analytics`, `🔒 vault` | Target workspace boxes on issues; changed paths on pull requests |
 
 Triage manages only these labels and preserves any other label. Editing the
 form fields updates the title and labels. Triage changes made by the workflow
 token do not trigger it again.
+
+Pull requests get workspace labels from their changed files (`fabric/<layer>/`,
+and `src/product_analytics/`, whose identity and Silver phases also write to
+Vault). Labels are recomputed on every push. A `🔒 vault` pull request shows a
+privacy-review warning: confirm that pseudonymisation keys stay in Vault and
+that no identifiers reach Data or Analytics.
 
 ## Safety rules
 

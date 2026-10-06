@@ -23,6 +23,9 @@ Follow `.github/CONTRIBUTING.md`. Key rules:
   part of a pull request. Deployment and execution are separate approved steps.
   If the issue has `⚠️ data-change`, stop and request explicit approval
   before any execution.
+- If the issue or pull request has `🔒 vault`, keep pseudonymisation keys and
+  re-identification data in Vault only, and call out the privacy review in the
+  pull request.
 - Add new Fabric items as `fabric/<layer>/<domain>/<type>/<Name>.<FabricType>/` and
   explicitly extend the deployment allowlist and its tests.
 - Name workspaces, items, groups, identities and secrets exactly as defined in

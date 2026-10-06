@@ -23,3 +23,4 @@ Closes #
 ## Safety
 
 - [ ] No secrets, tokens, real tenant/workspace/item IDs, personal data or notebook outputs.
+- [ ] If labelled `🔒 vault`: privacy review done; pseudonymisation keys stay in Vault and no identifiers reach Data or Analytics.
