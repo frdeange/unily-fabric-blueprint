@@ -56,9 +56,15 @@ Not workspace boundaries:
 
 | Environment | Code | GitHub Environment | Capacity |
 | --- | --- | --- | --- |
-| Development | `Dev` | `dev` | Non-production |
-| Test | `Test` | `test` | Non-production |
-| Production | `Prod` | `prod` | Production |
+| Development | `Dev` | `dev` | Existing lab F2 capacity |
+| Test | `Test` | `test` | Existing lab F2 capacity |
+| Production | `Prod` | `prod` | To be decided |
+
+The lab assigns all workspaces to the existing F2 capacity. Because capacity
+is assigned per workspace, the layer split lets production later place Data
+(Spark processing) and Analytics (interactive queries, Data Agents) on
+separate capacities, so heavy processing never slows consumption. This is a
+recommendation, not a lab requirement.
 
 All environments deploy the same repository definitions. Only private,
 per-environment configuration (workspace and item IDs) differs.
@@ -95,13 +101,13 @@ Patterns:
 | Lakehouse schema | `<schema>` | `product`, `support` |
 | Table | `snake_case` noun | `usage_events`, `dim_user` |
 | Notebook | `<Domain>_<Purpose>` | `ProductAnalytics_BronzeToSilver`, `ProductAnalytics_SilverToGold` |
-| Variable Library | `<Domain>_Config` | `ProductAnalytics_Config` |
+| Variable Library (configuration only, not a notebook) | `<Domain>_Config` | `ProductAnalytics_Config` |
 | Semantic model | `<Domain>_<Audience>` | `ProductAnalytics_Safe`, `Support_Safe`, `ProductAnalytics_Ops` |
 | Data Agent | `<Domain>_<Audience>_Agent` | `ProductAnalytics_Safe_Agent` |
 | Entra security group | `SG-Unily-<Layer>-<Env>-<Role>` | `SG-Unily-Data-Prod-Contributors` |
 | Consumer group | `SG-Unily-Analytics-<Env>-<Domain>-Consumers` | `SG-Unily-Analytics-Prod-Support-Consumers` |
 | Deployment identity | `SP-Unily-Deploy-<Env>` | `SP-Unily-Deploy-Dev` |
-| Fabric capacity (Azure) | `fcunily<tier>` (lowercase alphanumeric) | `fcunilynonprod`, `fcunilyprod` |
+| Fabric capacity (Azure, production only) | `fcunily<tier>` (lowercase alphanumeric) | `fcunilydata`, `fcunilyanalytics` |
 | GitHub Environment | `<env>` | `dev` |
 | Environment secret | `<DOMAIN>_RUNTIME_CONFIG_JSON` | `PRODUCT_RUNTIME_CONFIG_JSON` |
 | Git branch | `<feature\|fix\|maintenance\|docs>/<issue>-<slug>` | `docs/10-architecture-naming` |
