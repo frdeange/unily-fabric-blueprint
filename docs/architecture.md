@@ -102,7 +102,8 @@ Patterns:
 | Table | `snake_case` noun | `usage_events`, `dim_user` |
 | Notebook | `<Domain>_<Purpose>` | `ProductAnalytics_BronzeToSilver`, `ProductAnalytics_SilverToGold` |
 | Variable Library (configuration only, not a notebook) | `<Domain>_Config` | `ProductAnalytics_Config` |
-| Data pipeline (orchestration) | `<Domain>_<Purpose>` | `ProductAnalytics_Process`, `ProductAnalytics_Demo` |
+| Data pipeline, one per medallion stage | `<Domain>_<Stage>Pipeline` | `ProductAnalytics_SilverPipeline`, `ProductAnalytics_GoldPipeline` |
+| Data pipeline, reproduction only | `<Domain>_Demo` | `ProductAnalytics_Demo` |
 | Semantic model | `<Domain>_<Audience>` | `ProductAnalytics_Safe`, `Support_Safe`, `ProductAnalytics_Ops` |
 | Data Agent | `<Domain>_<Audience>_Agent` | `ProductAnalytics_Safe_Agent` |
 | Entra security group | `SG-Unily-<Layer>-<Env>-<Role>` | `SG-Unily-Data-Prod-Contributors` |

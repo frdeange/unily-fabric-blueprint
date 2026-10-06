@@ -2,7 +2,7 @@
   "properties": {
     "activities": [
       {
-        "name": "Build",
+        "name": "SilverToGold",
         "type": "TridentNotebook",
         "dependsOn": [],
         "policy": {
@@ -13,7 +13,7 @@
           "secureInput": true
         },
         "typeProperties": {
-          "notebookId": "00000000-0000-4000-8000-000000000006",
+          "notebookId": "00000000-0000-4000-8000-000000000016",
           "workspaceId": "00000000-0000-0000-0000-000000000000",
           "parameters": {
             "allow_synthetic_overwrite": {
@@ -87,50 +87,6 @@
               "type": "string"
             }
           }
-        }
-      },
-      {
-        "name": "Silver",
-        "type": "ExecutePipeline",
-        "dependsOn": [
-          {
-            "activity": "Build",
-            "dependencyConditions": [
-              "Succeeded"
-            ]
-          }
-        ],
-        "policy": {
-          "secureInput": true
-        },
-        "typeProperties": {
-          "pipeline": {
-            "referenceName": "00000000-0000-4000-8000-000000000013",
-            "type": "PipelineReference"
-          },
-          "waitOnCompletion": true
-        }
-      },
-      {
-        "name": "Gold",
-        "type": "ExecutePipeline",
-        "dependsOn": [
-          {
-            "activity": "Silver",
-            "dependencyConditions": [
-              "Succeeded"
-            ]
-          }
-        ],
-        "policy": {
-          "secureInput": true
-        },
-        "typeProperties": {
-          "pipeline": {
-            "referenceName": "00000000-0000-4000-8000-000000000017",
-            "type": "PipelineReference"
-          },
-          "waitOnCompletion": true
         }
       }
     ],
