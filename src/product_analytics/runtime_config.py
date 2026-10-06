@@ -5,7 +5,7 @@ import re
 import uuid
 
 LIBRARY_NAME = "ProductAnalytics_Config"
-ID_FIELDS = ("data_workspace_id", "vault_workspace_id", "bronze_id", "silver_id", "identity_id")
+ID_FIELDS = ("data_workspace_id", "vault_workspace_id", "bronze_id", "silver_id", "gold_id", "identity_id")
 SETTING_FIELDS = {"sources_json", "pii_policy_version", "pii_model", "allow_synthetic_overwrite"}
 FIELDS = set(ID_FIELDS) | SETTING_FIELDS
 SCHEMA = "product"
@@ -32,8 +32,8 @@ def validate_config(values):
         if value.startswith("00000000-"):
             raise ValueError("Example configuration only; bind a real environment before execution")
         config[name] = value
-    if len({config[name] for name in ("bronze_id", "silver_id", "identity_id")}) != 3:
-        raise ValueError("Bronze, Silver and Identity must be distinct lakehouses")
+    if len({config[name] for name in ("bronze_id", "silver_id", "gold_id", "identity_id")}) != 4:
+        raise ValueError("Bronze, Silver, Gold and Identity must be distinct lakehouses")
     # Re-identification data stays in a separate workspace (GDPR Art. 4(5)); see docs/architecture.md.
     if config["data_workspace_id"] == config["vault_workspace_id"]:
         raise ValueError("Data and Vault must be distinct workspaces")

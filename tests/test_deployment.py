@@ -146,7 +146,8 @@ class StagingTests(unittest.TestCase):
             prepare(ROOT, config, "data", ("VariableLibrary", "Notebook", "DataPipeline"), "dev", current)
             self.assertEqual({p.name for p in config.iterdir()}, {
                 "ProductAnalytics_Config.VariableLibrary", "ProductAnalytics_Build.Notebook",
-                "ProductAnalytics_BronzeToSilver.Notebook", "ProductAnalytics_Process.DataPipeline",
+                "ProductAnalytics_BronzeToSilver.Notebook", "ProductAnalytics_SilverToGold.Notebook",
+                "ProductAnalytics_Process.DataPipeline",
                 "ProductAnalytics_Demo.DataPipeline"})
             library = config / "ProductAnalytics_Config.VariableLibrary"
             self.assertEqual(json.loads((library / "variables.json").read_text()), variables_definition(current))

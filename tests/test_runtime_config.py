@@ -67,10 +67,12 @@ class RuntimeConfigTests(unittest.TestCase):
                 if activity["type"] == "TridentNotebook":
                     self.assertTrue(set(FIELDS) <= set(activity["typeProperties"]["parameters"]))
                     self.assertTrue(activity["policy"]["secureInput"])
-        validate, process = definitions["ProductAnalytics_Process"]["properties"]["activities"]
+        validate, process, gold = definitions["ProductAnalytics_Process"]["properties"]["activities"]
         self.assertEqual(validate["typeProperties"]["parameters"]["validate_only"]["value"]["value"], "@bool('true')")
         self.assertEqual(process["typeProperties"]["parameters"]["validate_only"]["value"]["value"], "@bool('false')")
         self.assertEqual(process["dependsOn"], [{"activity": "Validate", "dependencyConditions": ["Succeeded"]}])
+        self.assertNotIn("validate_only", gold["typeProperties"]["parameters"])
+        self.assertEqual(gold["dependsOn"], [{"activity": "BronzeToSilver", "dependencyConditions": ["Succeeded"]}])
         build, invoke = definitions["ProductAnalytics_Demo"]["properties"]["activities"]
         self.assertNotIn("validate_only", build["typeProperties"]["parameters"])
         self.assertEqual(invoke["type"], "ExecutePipeline")
@@ -97,6 +99,7 @@ class RuntimeConfigTests(unittest.TestCase):
         invalid.append(missing)
         for field, value in (
             ("data_workspace_id", ""), ("bronze_id", baseline["identity_id"]),
+            ("gold_id", baseline["silver_id"]),
             ("vault_workspace_id", baseline["data_workspace_id"]),
             ("pii_model", ""), ("allow_synthetic_overwrite", "false"),
             ("sources_json", "[]"), ("sources_json", "null"),
@@ -149,7 +152,8 @@ class RuntimeConfigTests(unittest.TestCase):
         for name, sections in code_sections().items():
             cells = notebook_cells(name, sections)
             code = [cell for cell in cells if cell["cell_type"] == "code"]
-            self.assertEqual(len(code), 4 if name.endswith("_Build") else 7)
+            self.assertEqual(len(code), {"ProductAnalytics_Build": 4, "ProductAnalytics_BronzeToSilver": 7,
+                                         "ProductAnalytics_SilverToGold": 4}[name])
             parameters = "".join(code[0]["source"])
             self.assertEqual(code[0]["metadata"]["tags"], ["parameters"])
             for field in FIELDS:

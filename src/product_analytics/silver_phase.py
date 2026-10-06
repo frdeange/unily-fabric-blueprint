@@ -77,10 +77,17 @@ fingerprint = hashlib.sha256(json.dumps({
 # First run in a new environment: create the empty Silver table once, never replace it.
 if not DeltaTable.isDeltaTable(spark, OUTPUT):
     spark.createDataFrame([], OUTPUT_SCHEMA).write.format("delta").mode("errorifexists").save(OUTPUT)
+# Gold reads Silver incrementally through the Delta Change Data Feed.
+properties = DeltaTable.forPath(spark, OUTPUT).detail().first()["properties"] or {}
+if str(properties.get("delta.enableChangeDataFeed", "false")).lower() != "true":
+    spark.sql(f"ALTER TABLE delta.`{OUTPUT}` SET TBLPROPERTIES (delta.enableChangeDataFeed = true)")
 marker =  AUDIT + "/completed-" + fingerprint + ".json"
 if notebookutils.fs.exists(marker):
     previous = json.loads(notebookutils.fs.head(marker, 1000000))
-    if previous["silver_delta_version"] != delta_version(OUTPUT):
+    later = DeltaTable.forPath(spark, OUTPUT).history().filter(
+        F.col("version") > previous["silver_delta_version"])
+    # Table property commits (such as enabling the change feed) do not change the data.
+    if later.filter(F.col("operation") != "SET TBLPROPERTIES").limit(1).count():
         raise RuntimeError("Silver changed after the recorded batch; review required")
     print(json.dumps({"status": "already_processed", "model_calls": 0, "run_id": previous["run_id"]}))
     notebookutils.notebook.exit("Already processed; no new inference or writes")

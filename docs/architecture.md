@@ -124,8 +124,8 @@ Current tables (all in the `product` schema of schema-enabled lakehouses):
 | Workspace | Lakehouse | Tables / files |
 | --- | --- | --- |
 | Data | Bronze | `users_<tenant>`, `events_<tenant>` (RAW, one pair per tenant) |
-| Data | Silver | `usage_events` (pseudonymous, PII-masked) |
-| Data | Gold | empty until #13 |
+| Data | Silver | `usage_events` (pseudonymous, PII-masked, Change Data Feed enabled) |
+| Data | Gold | `fact_usage_event`, `dim_user`, `dim_feature`, `dim_tenant`, `dim_date` ([contract](gold-contract.md)); watermark under `Files/product/state/` |
 | Vault | Identity | `user_identity_map`; restricted audit under `Files/product/validation/` |
 
 ## 4. Access model

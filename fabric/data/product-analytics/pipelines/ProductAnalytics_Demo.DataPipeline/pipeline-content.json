@@ -37,6 +37,13 @@
               },
               "type": "string"
             },
+            "gold_id": {
+              "value": {
+                "value": "@pipeline().libraryVariables.gold_id",
+                "type": "Expression"
+              },
+              "type": "string"
+            },
             "identity_id": {
               "value": {
                 "value": "@pipeline().libraryVariables.identity_id",
@@ -119,6 +126,11 @@
       "data_workspace_id": {
         "type": "String",
         "variableName": "data_workspace_id",
+        "libraryName": "ProductAnalytics_Config"
+      },
+      "gold_id": {
+        "type": "String",
+        "variableName": "gold_id",
         "libraryName": "ProductAnalytics_Config"
       },
       "identity_id": {
