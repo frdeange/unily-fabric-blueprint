@@ -147,7 +147,7 @@ class StagingTests(unittest.TestCase):
             self.assertEqual({p.name for p in config.iterdir()}, {
                 "ProductAnalytics_Config.VariableLibrary", "ProductAnalytics_Build.Notebook",
                 "ProductAnalytics_BronzeToSilver.Notebook", "ProductAnalytics_SilverToGold.Notebook",
-                "ProductAnalytics_Process.DataPipeline",
+                "ProductAnalytics_SilverPipeline.DataPipeline", "ProductAnalytics_GoldPipeline.DataPipeline",
                 "ProductAnalytics_Demo.DataPipeline"})
             library = config / "ProductAnalytics_Config.VariableLibrary"
             self.assertEqual(json.loads((library / "variables.json").read_text()), variables_definition(current))
@@ -183,12 +183,14 @@ class DeploymentTests(unittest.TestCase):
         self.assertEqual(deployed["bronze_id"], find_item(fabric.items[data], "Bronze", "Lakehouse")["id"])
         self.assertFalse(deployed["allow_synthetic_overwrite"])
         demo = json.loads(fabric.definitions[find_item(fabric.items[data], "ProductAnalytics_Demo", "DataPipeline")["id"]][1])
-        build, process = demo["properties"]["activities"]
+        build, silver, gold = demo["properties"]["activities"]
         self.assertEqual(build["typeProperties"]["notebookId"],
                          find_item(fabric.items[data], "ProductAnalytics_Build", "Notebook")["id"])
         self.assertEqual(build["typeProperties"]["workspaceId"], data)
-        self.assertEqual(process["typeProperties"]["pipeline"]["referenceName"],
-                         find_item(fabric.items[data], "ProductAnalytics_Process", "DataPipeline")["id"])
+        self.assertEqual(silver["typeProperties"]["pipeline"]["referenceName"],
+                         find_item(fabric.items[data], "ProductAnalytics_SilverPipeline", "DataPipeline")["id"])
+        self.assertEqual(gold["typeProperties"]["pipeline"]["referenceName"],
+                         find_item(fabric.items[data], "ProductAnalytics_GoldPipeline", "DataPipeline")["id"])
 
     def test_changed_pipeline_readback_is_rejected(self):
         fabric = FakeFabric()
@@ -197,7 +199,7 @@ class DeploymentTests(unittest.TestCase):
         def tampered(workspace, directory, kinds):
             original(workspace, directory, kinds)
             for item in fabric.items[workspace]:
-                if item["type"] == "DataPipeline" and item["displayName"] == "ProductAnalytics_Process":
+                if item["type"] == "DataPipeline" and item["displayName"] == "ProductAnalytics_SilverPipeline":
                     file, content = fabric.definitions[item["id"]]
                     fabric.definitions[item["id"]] = (file, content.replace(b'"Validate"', b'"Skipped"'))
         fabric.publish = tampered
@@ -208,7 +210,7 @@ class DeploymentTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             shutil.copytree(ROOT / "fabric", root / "fabric")
-            content = root / "fabric" / "data" / "product-analytics" / "pipelines" / "ProductAnalytics_Process.DataPipeline" / "pipeline-content.json"
+            content = root / "fabric" / "data" / "product-analytics" / "pipelines" / "ProductAnalytics_SilverPipeline.DataPipeline" / "pipeline-content.json"
             identity = "00000000-0000-4000-8000-000000000012"
             content.write_text(content.read_text().replace("00000000-0000-4000-8000-000000000007", identity))
             with self.assertRaisesRegex(ValueError, "outside its layer"):

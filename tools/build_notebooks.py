@@ -15,6 +15,12 @@ PIPELINES = ROOT / "fabric" / "data" / "product-analytics" / "pipelines"
 # fabric-cicd replaces this placeholder with the target workspace at publication.
 DEFAULT_WORKSPACE = "00000000-0000-0000-0000-000000000000"
 BOOLEAN_FIELDS = {"allow_synthetic_overwrite"}
+# Each medallion stage has its own pipeline and trigger; only the Demo chains them.
+RUN_BY = {
+    "ProductAnalytics_Build": "ProductAnalytics_Demo",
+    "ProductAnalytics_BronzeToSilver": "ProductAnalytics_SilverPipeline",
+    "ProductAnalytics_SilverToGold": "ProductAnalytics_GoldPipeline",
+}
 
 
 def code_sections():
@@ -128,9 +134,8 @@ def notebook_cells(name, sections):
     cells = [{
         "cell_type": "markdown", "id": "overview", "metadata": {},
         "source": [f"# {name}\n", "\n",
-                   "Run through the `ProductAnalytics_Process` or `ProductAnalytics_Demo` "
-                   "pipeline, or interactively with cells in order. Deployment never executes "
-                   "this notebook.\n"],
+                   f"Run through the `{RUN_BY[name]}` pipeline, or interactively with cells "
+                   "in order. Deployment never executes this notebook.\n"],
     }]
     parameters = ["# Pipelines inject these values from ProductAnalytics_Config; keep None interactively.\n"]
     parameters += [f"{field} = None\n" for field in sorted(FIELDS)]
@@ -183,34 +188,41 @@ def notebook_activity(name, notebook, depends_on=(), validate_only=None, timeout
     }
 
 
+def invoke(name, pipeline, depends_on):
+    return {
+        "name": name, "type": "ExecutePipeline",
+        "dependsOn": [{"activity": depends_on, "dependencyConditions": ["Succeeded"]}],
+        "policy": {"secureInput": True},
+        "typeProperties": {
+            "pipeline": {"referenceName": logical_id(PIPELINES / f"{pipeline}.DataPipeline"),
+                         "type": "PipelineReference"},
+            "waitOnCompletion": True,
+        },
+    }
+
+
 def pipelines():
-    """Process is the production path; Demo adds the synthetic RAW load for reproduction."""
+    """One independently triggered pipeline per stage; Demo chains them for reproduction only."""
     library = {
         field: {"type": "Bool" if field in BOOLEAN_FIELDS else "String",
                 "variableName": field, "libraryName": LIBRARY_NAME}
         for field in sorted(FIELDS)
     }
-    process = [
+    silver = [
         notebook_activity("Validate", "ProductAnalytics_BronzeToSilver", validate_only=True),
         notebook_activity("BronzeToSilver", "ProductAnalytics_BronzeToSilver", ("Validate",),
                           validate_only=False, timeout="0.04:00:00"),
-        notebook_activity("SilverToGold", "ProductAnalytics_SilverToGold", ("BronzeToSilver",)),
     ]
+    gold = [notebook_activity("SilverToGold", "ProductAnalytics_SilverToGold")]
     demo = [
         notebook_activity("Build", "ProductAnalytics_Build"),
-        {
-            "name": "Process", "type": "ExecutePipeline",
-            "dependsOn": [{"activity": "Build", "dependencyConditions": ["Succeeded"]}],
-            "policy": {"secureInput": True},
-            "typeProperties": {
-                "pipeline": {"referenceName": logical_id(PIPELINES / "ProductAnalytics_Process.DataPipeline"),
-                             "type": "PipelineReference"},
-                "waitOnCompletion": True,
-            },
-        },
+        invoke("Silver", "ProductAnalytics_SilverPipeline", "Build"),
+        invoke("Gold", "ProductAnalytics_GoldPipeline", "Silver"),
     ]
     return {name: {"properties": {"activities": activities, "libraryVariables": library}}
-            for name, activities in (("ProductAnalytics_Process", process), ("ProductAnalytics_Demo", demo))}
+            for name, activities in (("ProductAnalytics_SilverPipeline", silver),
+                                     ("ProductAnalytics_GoldPipeline", gold),
+                                     ("ProductAnalytics_Demo", demo))}
 
 
 def build(check=False):

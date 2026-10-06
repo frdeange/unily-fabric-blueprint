@@ -12,8 +12,13 @@ Public reference implementation for synthetic multi-tenant product analytics.
 
 | Pipeline | Purpose |
 | --- | --- |
-| `ProductAnalytics_Process` | Production path: read-only validation, Bronze-to-Silver, then Silver-to-Gold. Schedule this one. |
-| `ProductAnalytics_Demo` | Reproduction: synthetic RAW load (`Build`), then invokes `ProductAnalytics_Process`. Never schedule. |
+| `ProductAnalytics_SilverPipeline` | Silver stage: read-only validation, then Bronze-to-Silver. |
+| `ProductAnalytics_GoldPipeline` | Gold stage: incremental Silver-to-Gold; a no-op when Silver has not changed. |
+| `ProductAnalytics_Demo` | Reproduction only: synthetic RAW load (`Build`), then the Silver and Gold pipelines. Never schedule. |
+
+Each stage pipeline is triggered independently, so stages can have different
+cadences, retries and failure handling. Only the reproduction pipeline chains
+them. The trigger strategy (schedules or events) is an open decision (#23).
 
 This is the existing lab baseline, not a production deployment framework.
 Workspace, lakehouse and logical item references are fictitious example IDs.
@@ -261,8 +266,8 @@ It must never run automatically as part of a deployment.
 1. Provision the three workspaces and run **Deploy dev environment**.
 2. In `Unily-Data-<Env>`, run the `ProductAnalytics_Demo` pipeline once. It loads
    the synthetic A/B/C RAW tables into empty Bronze tables, then runs
-   `ProductAnalytics_Process` (validation, Bronze-to-Silver, then Silver-to-Gold).
-3. Later runs use `ProductAnalytics_Process` only. An unchanged batch is a no-op,
+   `ProductAnalytics_SilverPipeline` and `ProductAnalytics_GoldPipeline`.
+3. Later runs use the stage pipelines independently. An unchanged batch is a no-op,
    and Gold exits without writes when Silver has not changed.
    Rerunning `ProductAnalytics_Demo` against populated Bronze fails by design
    in `Build` unless `allow_synthetic_overwrite` is explicitly true.

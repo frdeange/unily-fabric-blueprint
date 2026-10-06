@@ -58,7 +58,8 @@ class RuntimeConfigTests(unittest.TestCase):
 
     def test_pipelines_pass_every_field_from_the_library(self):
         definitions = pipelines()
-        self.assertEqual(set(definitions), {"ProductAnalytics_Process", "ProductAnalytics_Demo"})
+        self.assertEqual(set(definitions), {"ProductAnalytics_SilverPipeline", "ProductAnalytics_GoldPipeline",
+                                            "ProductAnalytics_Demo"})
         for name, definition in definitions.items():
             library = definition["properties"]["libraryVariables"]
             self.assertEqual(set(library), FIELDS)
@@ -67,16 +68,23 @@ class RuntimeConfigTests(unittest.TestCase):
                 if activity["type"] == "TridentNotebook":
                     self.assertTrue(set(FIELDS) <= set(activity["typeProperties"]["parameters"]))
                     self.assertTrue(activity["policy"]["secureInput"])
-        validate, process, gold = definitions["ProductAnalytics_Process"]["properties"]["activities"]
+        validate, process = definitions["ProductAnalytics_SilverPipeline"]["properties"]["activities"]
+        gold, = definitions["ProductAnalytics_GoldPipeline"]["properties"]["activities"]
         self.assertEqual(validate["typeProperties"]["parameters"]["validate_only"]["value"]["value"], "@bool('true')")
         self.assertEqual(process["typeProperties"]["parameters"]["validate_only"]["value"]["value"], "@bool('false')")
         self.assertEqual(process["dependsOn"], [{"activity": "Validate", "dependencyConditions": ["Succeeded"]}])
         self.assertNotIn("validate_only", gold["typeProperties"]["parameters"])
-        self.assertEqual(gold["dependsOn"], [{"activity": "BronzeToSilver", "dependencyConditions": ["Succeeded"]}])
-        build, invoke = definitions["ProductAnalytics_Demo"]["properties"]["activities"]
+        self.assertEqual(gold["dependsOn"], [])
+        build, silver, gold = definitions["ProductAnalytics_Demo"]["properties"]["activities"]
         self.assertNotIn("validate_only", build["typeProperties"]["parameters"])
-        self.assertEqual(invoke["type"], "ExecutePipeline")
-        self.assertTrue(invoke["typeProperties"]["waitOnCompletion"])
+        for invoke, after in ((silver, "Build"), (gold, "Silver")):
+            self.assertEqual(invoke["type"], "ExecutePipeline")
+            self.assertTrue(invoke["typeProperties"]["waitOnCompletion"])
+            self.assertEqual(invoke["dependsOn"], [{"activity": after, "dependencyConditions": ["Succeeded"]}])
+        # Only the reproduction pipeline chains stages.
+        for name in ("ProductAnalytics_SilverPipeline", "ProductAnalytics_GoldPipeline"):
+            types = {a["type"] for a in definitions[name]["properties"]["activities"]}
+            self.assertEqual(types, {"TridentNotebook"})
 
     def test_fourth_source_is_supported_by_processing_registry(self):
         values = valid_config()
