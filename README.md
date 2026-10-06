@@ -22,7 +22,8 @@ not implemented.
 - `src/`: RAW generator, identity phase, event phase, and exact-span masking.
 - `tests/`: standard-library tests using synthetic data; no Fabric access.
 - `tools/`: reproducibility and repository-content checks.
-- `.github/workflows/ci.yml`: CI only, without deployment credentials.
+- `.github/workflows/ci.yml`: read-only CI, without Fabric credentials.
+- `.github/workflows/verify-fabric.yml`: manually approved OIDC connection check.
 
 ## Local checks
 
@@ -46,9 +47,30 @@ code cells independently from their source.
 ## Delivery boundaries
 
 A push or successful CI run does not deploy or execute anything in Fabric.
-GitHub-to-Fabric authentication and CD will be configured separately, preferably
-using Microsoft Entra workload identity federation rather than a stored client
-secret. No repository or workflow currently has access to Fabric.
+`main` requires a pull request, successful `validate` CI against an up-to-date
+branch and resolved conversations. These rules apply to administrators.
+Independent PR approval is not required for this solo-owner lab.
+
+The manual **Verify Fabric connection** workflow uses Microsoft Entra workload
+identity federation, not a password or client secret. Its `dev` environment
+allows only `main`, requires owner approval and disables administrator bypass.
+The owner can approve their own run for this solo-owner lab; production should
+use independent reviewers. The Entra trust is scoped to this repository's `dev`
+environment. CI on pull requests cannot access those environment secrets.
+
+Configure `AZURE_CLIENT_ID`, `AZURE_TENANT_ID` and `FABRIC_WORKSPACE_ID` as `dev`
+Environment Secrets, never as committed files. The identity has Contributor
+access to the Product lab workspace, not Azure subscription roles. Contributor
+permits more than notebook publication, including workspace data access; the
+workflow currently performs only a GET of the expected workspace.
+The tenant already permits service principals to use Fabric public APIs.
+No tenant setting is changed by this setup.
+
+After merging this foundation, run **Verify Fabric connection** from `main`
+and approve the pending `dev` environment gate. This verifies authentication and
+workspace access without publishing, deleting or running items. Deployment is
+still unimplemented and must wait for private environment binding of notebook
+references.
 
 Do not commit credentials, user mappings, lab results, customer data, or notebook
 outputs. Synthetic test strings are permitted. Real environment identifiers
@@ -60,8 +82,7 @@ This repository starts with a new sanitized history, not the original lab
 repository history. Changes here do not modify the running Fabric laboratory.
 
 CI checks and content guards reduce mistakes but are not a comprehensive secret
-scanner or a guarantee of PII removal. Branch protection and required reviews
-must be configured separately according to the GitHub plan.
+scanner or a guarantee of PII removal.
 
 The current processing flow is a bounded single-writer, first-load PoC. A
 successful unchanged batch skips inference and writes; changed inputs against
