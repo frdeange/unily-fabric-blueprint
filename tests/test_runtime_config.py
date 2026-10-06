@@ -11,7 +11,7 @@ from unittest.mock import Mock, patch
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src" / "product_analytics"))
 from runtime_config import FIELDS, ID_FIELDS, LIBRARY_NAME, load_runtime_config, onelake_table, validate_config
-from tools.build_notebooks import code_sections, notebook_cells
+from tools.build_notebooks import code_sections, notebook_cells, pipelines
 import build_product_analytics
 
 
@@ -40,6 +40,41 @@ class RuntimeConfigTests(unittest.TestCase):
         library.getVariable.side_effect = RuntimeError("missing variable")
         with self.assertRaisesRegex(RuntimeError, "missing variable"):
             load_runtime_config(utilities)
+
+    def test_pipeline_parameters_replace_library_reads(self):
+        values = valid_config()
+        values["allow_synthetic_overwrite"] = False
+        utilities = Mock()
+        config = load_runtime_config(utilities, values)
+        utilities.variableLibrary.getLibrary.assert_not_called()
+        self.assertEqual(config["bronze_id"], values["bronze_id"])
+        partial = {**{name: None for name in FIELDS}, "bronze_id": values["bronze_id"]}
+        with self.assertRaisesRegex(ValueError, "every configuration field"):
+            load_runtime_config(utilities, partial)
+        library = utilities.variableLibrary.getLibrary.return_value
+        library.getVariable.side_effect = values.__getitem__
+        load_runtime_config(utilities, {name: None for name in FIELDS})
+        utilities.variableLibrary.getLibrary.assert_called_once_with(LIBRARY_NAME)
+
+    def test_pipelines_pass_every_field_from_the_library(self):
+        definitions = pipelines()
+        self.assertEqual(set(definitions), {"ProductAnalytics_Process", "ProductAnalytics_Demo"})
+        for name, definition in definitions.items():
+            library = definition["properties"]["libraryVariables"]
+            self.assertEqual(set(library), FIELDS)
+            self.assertTrue(all(v["libraryName"] == LIBRARY_NAME for v in library.values()))
+            for activity in definition["properties"]["activities"]:
+                if activity["type"] == "TridentNotebook":
+                    self.assertTrue(set(FIELDS) <= set(activity["typeProperties"]["parameters"]))
+                    self.assertTrue(activity["policy"]["secureInput"])
+        validate, process = definitions["ProductAnalytics_Process"]["properties"]["activities"]
+        self.assertEqual(validate["typeProperties"]["parameters"]["validate_only"]["value"]["value"], "@bool('true')")
+        self.assertEqual(process["typeProperties"]["parameters"]["validate_only"]["value"]["value"], "@bool('false')")
+        self.assertEqual(process["dependsOn"], [{"activity": "Validate", "dependencyConditions": ["Succeeded"]}])
+        build, invoke = definitions["ProductAnalytics_Demo"]["properties"]["activities"]
+        self.assertNotIn("validate_only", build["typeProperties"]["parameters"])
+        self.assertEqual(invoke["type"], "ExecutePipeline")
+        self.assertTrue(invoke["typeProperties"]["waitOnCompletion"])
 
     def test_fourth_source_is_supported_by_processing_registry(self):
         values = valid_config()
@@ -114,9 +149,13 @@ class RuntimeConfigTests(unittest.TestCase):
         for name, sections in code_sections().items():
             cells = notebook_cells(name, sections)
             code = [cell for cell in cells if cell["cell_type"] == "code"]
-            self.assertEqual(len(code), 3 if name.endswith("_Build") else 7)
-            configuration_index = 0 if name.endswith("_Build") else 1
-            self.assertIn("load_runtime_config", "".join(code[configuration_index]["source"]))
+            self.assertEqual(len(code), 4 if name.endswith("_Build") else 7)
+            parameters = "".join(code[0]["source"])
+            self.assertEqual(code[0]["metadata"]["tags"], ["parameters"])
+            for field in FIELDS:
+                self.assertIn(f"{field} = None", parameters)
+            self.assertEqual("validate_only = False" in parameters, name.endswith("_BronzeToSilver"))
+            self.assertIn("load_runtime_config(notebookutils, {name: globals().get(name)", "".join(code[1]["source"]))
             self.assertEqual(len({cell["id"] for cell in cells}), len(cells))
             for cell in code:
                 compile("".join(cell["source"]), name, "exec")

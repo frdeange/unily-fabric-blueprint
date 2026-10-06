@@ -10,7 +10,8 @@ from pathlib import Path
 
 from environment import workspace_names
 from fabric_api import call, find_workspace, list_all
-from prepare_deployment import ID_FIELDS, ITEMS, LIBRARY_NAME, ROOT, STAGES, load_settings, prepare, runtime_values
+from prepare_deployment import (DEFAULT_WORKSPACE, ID_FIELDS, ITEMS, LIBRARY_NAME, ROOT, STAGES, load_settings,
+                                logical_ids, prepare, runtime_values)
 
 # Fabric creates one SQL analytics endpoint per lakehouse, with the same display name.
 COMPANIONS = {"Lakehouse": "SQLEndpoint"}
@@ -62,12 +63,36 @@ def verify_lakehouses(credential, workspace, layer, items):
                 raise RuntimeError(f"Lakehouse is not schema-enabled: {name}")
 
 
+def pipeline_shape(content):
+    """Fields we author; Fabric may add metadata to the stored definition."""
+    properties = content["properties"]
+    activities = []
+    for activity in properties["activities"]:
+        settings = activity["typeProperties"]
+        activities.append((
+            activity["name"], activity["type"],
+            [(d["activity"], d["dependencyConditions"]) for d in activity.get("dependsOn", [])],
+            settings.get("notebookId"), settings.get("workspaceId"), settings.get("parameters"),
+            settings.get("pipeline", {}).get("referenceName"), settings.get("waitOnCompletion"),
+        ))
+    return activities, properties.get("libraryVariables")
+
+
+def resolve_pipeline(text, workspace, items):
+    """Apply the substitutions fabric-cicd performs at publication."""
+    for logical, name in logical_ids(ROOT, "data").items():
+        kind = ITEMS["data"][name][0]
+        text = text.replace(logical, find_item(items, name, kind, required=True)["id"])
+    return text.replace(DEFAULT_WORKSPACE, workspace)
+
+
 def verify_definitions(credential, workspace, items, target, values):
     for name, (kind, _) in ITEMS["data"].items():
-        if kind not in ("Notebook", "VariableLibrary"):
+        if kind not in ("Notebook", "VariableLibrary", "DataPipeline"):
             continue
         item = find_item(items, name, kind, required=True)
-        endpoint = "notebooks" if kind == "Notebook" else "variableLibraries"
+        endpoint = {"Notebook": "notebooks", "VariableLibrary": "variableLibraries",
+                    "DataPipeline": "dataPipelines"}[kind]
         suffix = "?format=ipynb" if kind == "Notebook" else ""
         parts = decode_parts(call(
             credential, f"workspaces/{workspace}/{endpoint}/{item['id']}/getDefinition{suffix}", {}
@@ -81,6 +106,11 @@ def verify_definitions(credential, workspace, items, target, values):
                 raise RuntimeError(f"Notebook cell readback mismatch: {name}")
             if any(c.get("outputs") or c.get("execution_count") is not None for c in actual["cells"]):
                 raise RuntimeError(f"Unexpected executed notebook output: {name}")
+        elif kind == "DataPipeline":
+            staged = (target / f"{name}.{kind}" / "pipeline-content.json").read_text()
+            expected = json.loads(resolve_pipeline(staged, workspace, items))
+            if pipeline_shape(json.loads(parts["pipeline-content.json"])) != pipeline_shape(expected):
+                raise RuntimeError(f"Pipeline definition readback mismatch: {name}")
         else:
             actual = {v["name"]: v["value"] for v in json.loads(parts["variables.json"])["variables"]}
             if actual != values:

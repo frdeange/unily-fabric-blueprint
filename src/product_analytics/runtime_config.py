@@ -64,7 +64,17 @@ def validate_config(values):
     return config
 
 
-def load_runtime_config(notebook_utils):
+def load_runtime_config(notebook_utils, parameters=None):
+    """Pipeline runs inject every field from the library; interactive runs read it directly.
+
+    Service principals cannot read Variable Libraries from NotebookUtils, so pipelines
+    resolve the values and pass them as notebook parameters.
+    """
+    provided = {name: value for name, value in (parameters or {}).items() if value is not None}
+    if provided:
+        if set(provided) != FIELDS:
+            raise ValueError("Pipeline parameters must supply every configuration field")
+        return validate_config(provided)
     library = notebook_utils.variableLibrary.getLibrary(LIBRARY_NAME)
     values = {name: library.getVariable(name) for name in sorted(FIELDS)}
     return validate_config(values)

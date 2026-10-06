@@ -1,5 +1,6 @@
 import base64
 import json
+import shutil
 import sys
 import tempfile
 import unittest
@@ -12,7 +13,8 @@ sys.path.insert(0, str(ROOT / "tools"))
 from deploy_environment import deploy, find_item, verify_inventory
 from environment import workspace_name, workspace_names
 from fabric_api import find_workspace, operation_endpoint, wait_operation
-from prepare_deployment import ID_FIELDS, ITEMS, check_scope, load_settings, prepare, runtime_values, variables_definition
+from prepare_deployment import (DEFAULT_WORKSPACE, ID_FIELDS, ITEMS, check_scope, load_settings, prepare,
+                                runtime_values, variables_definition)
 
 
 def values():
@@ -46,6 +48,7 @@ class FakeFabric:
 
     def publish(self, workspace, directory, kinds):
         self.published.append((workspace, tuple(kinds)))
+        logical = {}
         for folder in directory.iterdir():
             name, kind = folder.name.rsplit(".", 1)
             assert kind in kinds
@@ -55,9 +58,19 @@ class FakeFabric:
                 self.items[workspace].append(existing)
                 if kind == "Lakehouse":
                     self.items[workspace].append({"displayName": name, "type": "SQLEndpoint", "id": str(uuid.uuid4())})
-            file = {"Notebook": "notebook-content.ipynb", "VariableLibrary": "variables.json"}.get(kind)
+            logical[json.loads((folder / ".platform").read_text())["config"]["logicalId"]] = existing["id"]
+        # Like fabric-cicd: resolve logical IDs within this publication and the workspace placeholder.
+        for folder in directory.iterdir():
+            name, kind = folder.name.rsplit(".", 1)
+            file = {"Notebook": "notebook-content.ipynb", "VariableLibrary": "variables.json",
+                    "DataPipeline": "pipeline-content.json"}.get(kind)
             if file:
-                self.definitions[existing["id"]] = (file, (folder / file).read_bytes())
+                content = (folder / file).read_text()
+                if kind == "DataPipeline":
+                    for old, new in logical.items():
+                        content = content.replace(old, new)
+                    content = content.replace(DEFAULT_WORKSPACE, workspace)
+                self.definitions[find_item(self.items[workspace], name, kind)["id"]] = (file, content.encode())
 
     def run(self):
         with patch("deploy_environment.list_all", self.list_all), patch("deploy_environment.call", self.call):
@@ -130,10 +143,11 @@ class StagingTests(unittest.TestCase):
             self.assertEqual({p.name for p in vault.iterdir()}, {"Identity.Lakehouse"})
             config = Path(directory) / "config"
             current = values()
-            prepare(ROOT, config, "data", ("VariableLibrary", "Notebook"), "dev", current)
+            prepare(ROOT, config, "data", ("VariableLibrary", "Notebook", "DataPipeline"), "dev", current)
             self.assertEqual({p.name for p in config.iterdir()}, {
                 "ProductAnalytics_Config.VariableLibrary", "ProductAnalytics_Build.Notebook",
-                "ProductAnalytics_BronzeToSilver.Notebook"})
+                "ProductAnalytics_BronzeToSilver.Notebook", "ProductAnalytics_Process.DataPipeline",
+                "ProductAnalytics_Demo.DataPipeline"})
             library = config / "ProductAnalytics_Config.VariableLibrary"
             self.assertEqual(json.loads((library / "variables.json").read_text()), variables_definition(current))
             self.assertEqual(json.loads((library / "settings.json").read_text())["valueSetsOrder"], ["dev"])
@@ -142,7 +156,7 @@ class StagingTests(unittest.TestCase):
     def test_unsafe_staging_fails_before_writing(self):
         with tempfile.TemporaryDirectory() as directory:
             target = Path(directory) / "items"
-            kinds = ("VariableLibrary", "Notebook")
+            kinds = ("VariableLibrary", "Notebook", "DataPipeline")
             for args in (({**values(), "allow_synthetic_overwrite": True}, "dev"), (values(), "prod"), (None, "dev")):
                 with self.assertRaises(ValueError):
                     prepare(ROOT, target, "data", kinds, args[1], args[0])
@@ -157,7 +171,7 @@ class DeploymentTests(unittest.TestCase):
         fabric.run()
         data, vault, analytics = (fabric.workspace(layer) for layer in ("data", "vault", "analytics"))
         self.assertEqual(fabric.published, [
-            (vault, ("Lakehouse",)), (data, ("Lakehouse",)), (data, ("VariableLibrary", "Notebook"))])
+            (vault, ("Lakehouse",)), (data, ("Lakehouse",)), (data, ("VariableLibrary", "Notebook", "DataPipeline"))])
         self.assertEqual({i["displayName"] for i in fabric.items[vault] if i["type"] == "Lakehouse"}, {"Identity"})
         self.assertEqual(fabric.items[analytics], [])
         library = find_item(fabric.items[data], "ProductAnalytics_Config", "VariableLibrary")
@@ -167,6 +181,37 @@ class DeploymentTests(unittest.TestCase):
         self.assertEqual(deployed["identity_id"], find_item(fabric.items[vault], "Identity", "Lakehouse")["id"])
         self.assertEqual(deployed["bronze_id"], find_item(fabric.items[data], "Bronze", "Lakehouse")["id"])
         self.assertFalse(deployed["allow_synthetic_overwrite"])
+        demo = json.loads(fabric.definitions[find_item(fabric.items[data], "ProductAnalytics_Demo", "DataPipeline")["id"]][1])
+        build, process = demo["properties"]["activities"]
+        self.assertEqual(build["typeProperties"]["notebookId"],
+                         find_item(fabric.items[data], "ProductAnalytics_Build", "Notebook")["id"])
+        self.assertEqual(build["typeProperties"]["workspaceId"], data)
+        self.assertEqual(process["typeProperties"]["pipeline"]["referenceName"],
+                         find_item(fabric.items[data], "ProductAnalytics_Process", "DataPipeline")["id"])
+
+    def test_changed_pipeline_readback_is_rejected(self):
+        fabric = FakeFabric()
+        original = fabric.publish
+
+        def tampered(workspace, directory, kinds):
+            original(workspace, directory, kinds)
+            for item in fabric.items[workspace]:
+                if item["type"] == "DataPipeline" and item["displayName"] == "ProductAnalytics_Process":
+                    file, content = fabric.definitions[item["id"]]
+                    fabric.definitions[item["id"]] = (file, content.replace(b'"Validate"', b'"Skipped"'))
+        fabric.publish = tampered
+        with self.assertRaisesRegex(RuntimeError, "Pipeline definition readback mismatch"):
+            fabric.run()
+
+    def test_pipeline_referencing_another_layer_is_rejected(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            shutil.copytree(ROOT / "fabric", root / "fabric")
+            content = root / "fabric" / "data" / "product-analytics" / "pipelines" / "ProductAnalytics_Process.DataPipeline" / "pipeline-content.json"
+            identity = "00000000-0000-4000-8000-000000000012"
+            content.write_text(content.read_text().replace("00000000-0000-4000-8000-000000000007", identity))
+            with self.assertRaisesRegex(ValueError, "outside its layer"):
+                check_scope(root)
 
     def test_redeployment_preserves_ids(self):
         fabric = FakeFabric()
