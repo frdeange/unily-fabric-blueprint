@@ -25,6 +25,9 @@ not implemented.
 - `config/product-analytics.example.json`: non-executable configuration contract.
 - `.github/workflows/ci.yml`: read-only CI, without Fabric credentials.
 - `.github/workflows/verify-fabric.yml`: manually approved OIDC connection check.
+- `.github/workflows/issue-triage.yml` and `issue-link.yml`: issue classification
+  and pull-request issue-link check.
+- `.github/ISSUE_TEMPLATE/`: structured issue forms.
 
 Items follow `fabric/<domain>/<type>/<Name>.<FabricType>/`. Keep each item's
 definition and `.platform` together. Semantic models will use TMDL under
@@ -105,8 +108,12 @@ Folder organization does not grant permissions or isolate data.
 
 ## Contribution workflow
 
-Create a short-lived `feature/...`, `fix/...` or `chore/...` branch from `main`,
-commit changes and open a pull request. Merge only after required CI succeeds.
+Every change starts with an issue created from a form. Triage normalizes its
+title to `[Type] Area: summary` and applies emoji labels. Work on an
+`<feature|fix|maintenance|docs>/<issue>-<slug>` branch from `main` and open a pull request
+that contains exactly one `Closes #<issue>` reference. Merge only after required
+CI and the `Linked issue` check succeed. See `.github/CONTRIBUTING.md`; AI agents
+also follow `.github/copilot-instructions.md`.
 `.github/CODEOWNERS` assigns ownership by domain and item type, including the
 automation and CODEOWNERS file itself. All owners currently map to the solo
 repository owner. Independent owner review is not enforced; enable it when

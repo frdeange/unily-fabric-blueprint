@@ -1,0 +1,86 @@
+name: "🧹 Maintenance"
+description: "Improve tooling, CI/CD, dependencies or structure without new product behavior."
+title: "[Maintenance] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Write in English. Never include secrets, tokens, real tenant/workspace/item IDs or personal data.
+        After submission, automation normalizes the title to `[Type] Area: summary` and applies emoji labels.
+  - type: dropdown
+    id: issue-type
+    attributes:
+      label: Issue type
+      description: "Fixed by this form. Do not change it."
+      options:
+        - "Maintenance"
+      default: 0
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      description: "Primary area affected. Use Repository for cross-cutting repository work."
+      options:
+        - "Product Analytics"
+        - "Support"
+        - "CI/CD"
+        - "Semantic Models"
+        - "Security"
+        - "Repository"
+    validations:
+      required: true
+  - type: textarea
+    id: objective
+    attributes:
+      label: Objective
+      description: "Why this maintenance is needed."
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: Scope
+      description: "Changes included in this issue."
+      placeholder: |
+        - ...
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: "Verifiable conditions for closing this issue."
+      placeholder: |
+        - [ ] ...
+        - [ ] ...
+    validations:
+      required: true
+  - type: textarea
+    id: out-of-scope
+    attributes:
+      label: Out of scope
+      description: "What this issue must not change."
+      placeholder: |
+        - ...
+    validations:
+      required: true
+  - type: dropdown
+    id: fabric-impact
+    attributes:
+      label: Fabric/data impact
+      description: "Data changes require separate explicit approval before execution."
+      options:
+        - "No Fabric or data impact"
+        - "Changes Fabric item definitions only"
+        - "Changes, deletes or regenerates Fabric data"
+    validations:
+      required: true
+  - type: textarea
+    id: impact-notes
+    attributes:
+      label: Impact notes
+      description: "Affected items, environments, rollback or approval notes."
+    validations:
+      required: false

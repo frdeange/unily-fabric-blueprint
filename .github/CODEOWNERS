@@ -14,6 +14,10 @@
 /tools/ @frdeange
 /config/ @frdeange
 /.github/workflows/ @frdeange
+/.github/ISSUE_TEMPLATE/ @frdeange
+/.github/pull_request_template.md @frdeange
+/.github/CONTRIBUTING.md @frdeange
+/.github/copilot-instructions.md @frdeange
 /.pre-commit-config.yaml @frdeange
 /requirements-dev.txt @frdeange
 /.github/CODEOWNERS @frdeange
