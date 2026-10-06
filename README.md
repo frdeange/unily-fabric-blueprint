@@ -28,6 +28,8 @@ not implemented.
 - `.github/workflows/issue-triage.yml` and `issue-link.yml`: issue classification
   and pull-request issue-link check.
 - `.github/ISSUE_TEMPLATE/`: structured issue forms.
+- `docs/architecture.md`: target workspaces (Data, Analytics, Vault per
+  environment), access model and the mandatory naming convention.
 
 Items follow `fabric/<domain>/<type>/<Name>.<FabricType>/`. Keep each item's
 definition and `.platform` together. Semantic models will use TMDL under
