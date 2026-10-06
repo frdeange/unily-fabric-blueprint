@@ -1,0 +1,20 @@
+repos:
+  - repo: https://github.com/kynan/nbstripout
+    rev: 7324e7aabccc1d1a9984dbe4dedbde8bd022a504 # 0.8.1
+    hooks:
+      - id: nbstripout
+        args: [--keep-id]
+  - repo: local
+    hooks:
+      - id: repository-content
+        name: Check repository scope and content
+        entry: python tools/check_repository.py
+        language: system
+        pass_filenames: false
+        always_run: true
+      - id: notebook-consistency
+        name: Check generated notebook consistency
+        entry: python tools/build_notebooks.py --check
+        language: system
+        pass_filenames: false
+        always_run: true

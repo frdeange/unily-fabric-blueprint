@@ -18,12 +18,49 @@ not implemented.
 
 ## Repository layout
 
-- `fabric/`: only the two operational Fabric item definitions.
-- `src/`: RAW generator, identity phase, event phase, and exact-span masking.
+- `fabric/product-analytics/notebooks/`: the two operational Fabric definitions.
+- `src/product_analytics/`: RAW generator, identity phase, event phase, and exact-span masking.
 - `tests/`: standard-library tests using synthetic data; no Fabric access.
 - `tools/`: reproducibility and repository-content checks.
 - `.github/workflows/ci.yml`: read-only CI, without Fabric credentials.
 - `.github/workflows/verify-fabric.yml`: manually approved OIDC connection check.
+
+Items follow `fabric/<domain>/<type>/<Name>.<FabricType>/`. Keep each item's
+definition and `.platform` together. Semantic models will use TMDL under
+`semantic-models/`, and Variable Libraries will use `variable-libraries/`.
+Support will follow the same domain layout when its sanitized definitions are
+added. Do not add empty placeholder folders or duplicate code for dev/pre/prod.
+Environment references belong in private configuration, not domain folders.
+Shared code will go in `src/shared/` when there is an actual shared consumer.
+
+The current deployment allowlist still includes only the two Product notebooks.
+Adding another item requires explicitly extending that allowlist and its tests.
+There is no deployment discovery or semantic-model publication implemented yet.
+Folder organization does not grant permissions or isolate data.
+
+## Contribution workflow
+
+Create a short-lived `feature/...`, `fix/...` or `chore/...` branch from `main`,
+commit changes and open a pull request. Merge only after required CI succeeds.
+`.github/CODEOWNERS` assigns ownership by domain and item type, including the
+automation and CODEOWNERS file itself. All owners currently map to the solo
+repository owner. Independent owner review is not enforced; enable it when
+eligible collaborators are available. Owners must have repository write access.
+
+Install the local hooks once in your development environment:
+
+```powershell
+python -m pip install -r requirements-dev.txt
+python -m pre_commit install
+python -m pre_commit run --all-files
+```
+
+The pinned `nbstripout` hook removes notebook outputs and execution counts.
+Review any automatic changes and stage them again before committing. The hooks
+also check repository content and generated notebook consistency. CI runs the
+same hooks on all tracked files and rejects changes they would make, even when
+local hooks were skipped. Never treat output stripping as secret scanning:
+secrets in source cells remain unsafe, and notebook attachments are rejected.
 
 ## Local checks
 
