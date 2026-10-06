@@ -8,18 +8,19 @@ Public reference implementation for synthetic multi-tenant product analytics.
 | --- | --- |
 | `ProductAnalytics_Build` | Generate separate synthetic A/B/C RAW sources. |
 | `ProductAnalytics_BronzeToSilver` | Resolve tenant-scoped identities, protect free text with Fabric AI Functions, and publish Silver. |
+| `ProductAnalytics_SilverToGold` | Incrementally publish the Gold star schema from Silver changes ([contract](docs/gold-contract.md)). |
 
 | Pipeline | Purpose |
 | --- | --- |
-| `ProductAnalytics_Process` | Production path: read-only validation, then Bronze-to-Silver. Schedule this one. |
+| `ProductAnalytics_Process` | Production path: read-only validation, Bronze-to-Silver, then Silver-to-Gold. Schedule this one. |
 | `ProductAnalytics_Demo` | Reproduction: synthetic RAW load (`Build`), then invokes `ProductAnalytics_Process`. Never schedule. |
 
 This is the existing lab baseline, not a production deployment framework.
 Workspace, lakehouse and logical item references are fictitious example IDs.
 The code intentionally rejects execution with these example values.
 Notebooks read validated runtime configuration and expose documented phases.
-Gold publication, incremental ingestion, and production runtime identity are
-not implemented.
+Gold is published incrementally; incremental Bronze-to-Silver ingestion and the
+production runtime identity are not implemented yet.
 
 ## Repository layout
 
@@ -61,6 +62,7 @@ Configure these variables before running:
 | `vault_workspace_id` | String | Vault workspace (identity mapping and audit). |
 | `bronze_id` | String | RAW lakehouse ID (Data). |
 | `silver_id` | String | Protected events lakehouse ID (Data). |
+| `gold_id` | String | Business star-schema lakehouse ID (Data). |
 | `identity_id` | String | Mapping and restricted audit lakehouse ID (Vault). |
 | `sources_json` | String | JSON array of tenant/user-table/event-table entries. |
 | `pii_policy_version` | String | Version label matching the reviewed PII policy. |
@@ -118,7 +120,7 @@ a schedule runs as whoever created or last updated it. Whether AI Functions and
 cross-workspace OneLake writes work under a service principal is validated in #18.
 
 The deployment allowlist includes the Bronze, Silver and Gold lakehouses (Data),
-the Identity lakehouse (Vault), the two Product notebooks, their configuration library
+the Identity lakehouse (Vault), the three Product notebooks, their configuration library
 and the two Product pipelines.
 Adding another item requires explicitly extending that allowlist and its tests.
 Semantic-model publication is not implemented yet.
@@ -248,7 +250,8 @@ scanner or a guarantee of PII removal.
 
 The current processing flow is a bounded single-writer, first-load PoC. A
 successful unchanged batch skips inference and writes; changed inputs against
-populated Silver are rejected. Deployment is separate from execution. The RAW
+populated Silver are rejected. Gold is incremental: it processes only the
+Silver changes since its last watermark (see [Gold contract](docs/gold-contract.md)). Deployment is separate from execution. The RAW
 generator performs an initial load into empty Bronze tables and refuses to
 overwrite existing tables unless `allow_synthetic_overwrite` is explicitly true.
 It must never run automatically as part of a deployment.
@@ -258,7 +261,8 @@ It must never run automatically as part of a deployment.
 1. Provision the three workspaces and run **Deploy dev environment**.
 2. In `Unily-Data-<Env>`, run the `ProductAnalytics_Demo` pipeline once. It loads
    the synthetic A/B/C RAW tables into empty Bronze tables, then runs
-   `ProductAnalytics_Process` (validation, then Bronze-to-Silver).
-3. Later runs use `ProductAnalytics_Process` only. An unchanged batch is a no-op.
+   `ProductAnalytics_Process` (validation, Bronze-to-Silver, then Silver-to-Gold).
+3. Later runs use `ProductAnalytics_Process` only. An unchanged batch is a no-op,
+   and Gold exits without writes when Silver has not changed.
    Rerunning `ProductAnalytics_Demo` against populated Bronze fails by design
    in `Build` unless `allow_synthetic_overwrite` is explicitly true.

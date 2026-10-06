@@ -55,6 +55,11 @@ def code_sections():
             ("Phase 4 - Silver publication and summary",
              "with audit_failure():\n" + publication),
         ],
+        "ProductAnalytics_SilverToGold": [
+            ("Configuration and validation", config),
+            ("Gold schema contract", (source / "gold_contract.py").read_text(encoding="utf-8")),
+            ("Incremental Gold publication", (source / "gold_phase.py").read_text(encoding="utf-8")),
+        ],
     }
 
 DESCRIPTIONS = {
@@ -94,6 +99,17 @@ DESCRIPTIONS = {
         "Use Fabric AI Functions to extract literal PII spans, then mask in code. "
         "Preserve null and empty text. Validate the entire staged batch before "
         "publication. `processed` is not a guarantee that text contains no remaining PII."
+    ),
+    "Gold schema contract": (
+        "Star schema published to Gold: one fact table and four dimensions. Every tenant-scoped "
+        "table carries `tenant_id` for row-level security. Direct identifiers and raw text are "
+        "forbidden; `feedback_text` holds only Silver text already protected by the PII step."
+    ),
+    "Incremental Gold publication": (
+        "Read only the Silver changes since the last Gold watermark through the Delta Change "
+        "Data Feed; the first run publishes the current Silver snapshot. MERGE on the contract "
+        "keys keeps reruns idempotent. Exits without writes when Silver has not changed. "
+        "Reads and writes the Data workspace only; never the Vault."
     ),
     "Phase 4 - Silver publication and summary": (
         "Append the validated batch to Silver, verify persisted rows and write the completion "
@@ -178,6 +194,7 @@ def pipelines():
         notebook_activity("Validate", "ProductAnalytics_BronzeToSilver", validate_only=True),
         notebook_activity("BronzeToSilver", "ProductAnalytics_BronzeToSilver", ("Validate",),
                           validate_only=False, timeout="0.04:00:00"),
+        notebook_activity("SilverToGold", "ProductAnalytics_SilverToGold", ("BronzeToSilver",)),
     ]
     demo = [
         notebook_activity("Build", "ProductAnalytics_Build"),

@@ -20,6 +20,7 @@ ITEMS = {
         LIBRARY_NAME: ("VariableLibrary", "product-analytics/variable-libraries"),
         "ProductAnalytics_Build": ("Notebook", "product-analytics/notebooks"),
         "ProductAnalytics_BronzeToSilver": ("Notebook", "product-analytics/notebooks"),
+        "ProductAnalytics_SilverToGold": ("Notebook", "product-analytics/notebooks"),
         "ProductAnalytics_Process": ("DataPipeline", "product-analytics/pipelines"),
         "ProductAnalytics_Demo": ("DataPipeline", "product-analytics/pipelines"),
     },

@@ -125,6 +125,7 @@ def resolve_ids(workspaces, data_items, vault_items):
     ids = {
         "data_workspace_id": workspaces["data"], "vault_workspace_id": workspaces["vault"],
         "bronze_id": lakehouse(data_items, "Bronze"), "silver_id": lakehouse(data_items, "Silver"),
+        "gold_id": lakehouse(data_items, "Gold"),
         "identity_id": lakehouse(vault_items, "Identity"),
     }
     assert set(ids) == set(ID_FIELDS)
