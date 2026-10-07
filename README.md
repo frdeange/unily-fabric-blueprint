@@ -48,7 +48,7 @@ production runtime identity are not implemented yet.
 - `docs/architecture.md`: target workspaces (Data, Analytics, Vault per
   environment), access model and the mandatory naming convention.
 - `docs/semantic-model.md`: semantic model access pattern, RLS roles and the
-  manual post-deployment runbook.
+  post-deployment runbook.
 
 Items follow `fabric/<domain>/<type>/<Name>.<FabricType>/`. Keep each item's
 definition and `.platform` together. Semantic models use TMDL under
@@ -224,8 +224,8 @@ pipeline resolve to the deployed item IDs. Finally it publishes
 lakehouse. It uses
 `fabric-cicd` 1.3.0 with Azure CLI OIDC credentials. It does not call orphan
 cleanup, create workspace folders, deploy agents, execute notebooks or
-refresh data or models. Connection binding, RLS role members and sharing are
-manual steps ([semantic model](docs/semantic-model.md)). Lakehouses are created schema-enabled and empty; existing item IDs
+refresh data or models. Connection binding, refresh, RLS role members and sharing are
+separately approved post-deployment steps ([semantic model](docs/semantic-model.md)). Lakehouses are created schema-enabled and empty; existing item IDs
 are verified after update.
 The deployment is not atomic; a failed publication may require a reviewed retry.
 
@@ -281,5 +281,5 @@ It must never run automatically as part of a deployment.
    and Gold exits without writes when Silver has not changed.
    Rerunning `ProductAnalytics_Demo` against populated Bronze fails by design
    in `Build` unless `allow_synthetic_overwrite` is explicitly true.
-4. After the first deployment, complete the manual semantic model steps
+4. After the first deployment, complete the semantic model post-deployment steps
    ([semantic model](docs/semantic-model.md)).

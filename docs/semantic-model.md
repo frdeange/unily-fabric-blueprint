@@ -71,24 +71,29 @@ relationships, roles and the source with the staged copy.
 Fabric drops role members and connection bindings from a definition, so the
 deployment never sets them and never refreshes the model.
 
-## Manual steps after the first deployment
+## Steps after the first deployment
 
-Done once per environment by a workspace admin in the Fabric portal. Record
+Done once per environment by a workspace admin, signed in with `az login`.
+Each step changes Fabric and needs explicit approval. Resolve workspace,
+model, connection and group IDs by name at run time; never store them. Record
 each run in the private deployment log.
 
-1. **Bind the connection.** Model settings, *Gateway and cloud connections*:
-   map the OneLake source to `conn-unily-analytics-<env>-gold-onelake`. If the
-   settings are read-only, use *Take over* first (the deployment service
-   principal owns the published model).
-2. **Refresh** the model once and confirm it succeeds.
-3. **Assign role members.** Model, *Security*: add each group to its role as
-   listed in the role table.
-4. **Share the model** with the four consumer groups: *Read* and *Build*,
-   without workspace access and without reshare.
-5. **Validate** the matrix below.
+| Step | Method |
+| --- | --- |
+| 1. **Take over** the model, because only the owner can bind it (the deployment service principal owns the published model) | Power BI REST: `POST groups/{workspace}/datasets/{model}/Default.TakeOver` |
+| 2. **Bind the connection.** List the model's data source references, then bind the OneLake reference to `conn-unily-analytics-<env>-gold-onelake` (connectivity `ShareableCloud`), echoing `connectionDetails` exactly. Relist to confirm | Fabric REST: `GET workspaces/{workspace}/items/{model}/connections`, then `POST workspaces/{workspace}/semanticModels/{model}/bindConnection` |
+| 3. **Refresh** the model once and confirm that the refresh history reports `Completed` | Power BI REST: `POST`, then `GET groups/{workspace}/datasets/{model}/refreshes` |
+| 4. **Assign role members.** Add each group to its role as listed in the role table | **Portal only**: model, *Security*. There is no supported API for role membership |
+| 5. **Share the model** with the four consumer groups as `ReadExplore` (Read and Build, no reshare, no workspace access) | Power BI REST: `POST groups/{workspace}/datasets/{model}/users` |
+| 6. **Validate** the matrix below | DAX `executeQueries` signed in as each test user; T-SQL against the Gold SQL analytics endpoint must be denied |
+
+Calls to the Fabric API carry the header
+`x-ms-fabric-skill: semantic-model-authoring`. The Fabric API uses the audience
+`https://api.fabric.microsoft.com`; the Power BI API uses
+`https://analysis.windows.net/powerbi/api`.
 
 A later redeployment updates the definition in place. Confirm that the
-binding and the role members survive; repeat steps 1 to 3 if they do not.
+binding and the role members survive; repeat steps 1 to 4 if they do not.
 
 ## Validation matrix
 
