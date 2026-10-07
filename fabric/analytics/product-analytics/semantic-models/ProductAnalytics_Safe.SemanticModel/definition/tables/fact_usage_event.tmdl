@@ -1,0 +1,88 @@
+table fact_usage_event
+
+	measure Events = COUNTROWS(fact_usage_event)
+		formatString: #,0
+
+	measure 'Active users' = DISTINCTCOUNT(fact_usage_event[user_key])
+		formatString: #,0
+
+	measure 'Total duration (s)' = SUM(fact_usage_event[duration_seconds])
+		formatString: #,0
+
+	measure 'Average duration (s)' = DIVIDE([Total duration (s)], [Events])
+		formatString: #,0.0
+
+	measure 'Events with feedback' = CALCULATE([Events], fact_usage_event[has_feedback_text] = TRUE())
+		formatString: #,0
+
+	measure Tenants = DISTINCTCOUNT(fact_usage_event[tenant_id])
+		formatString: #,0
+
+	column tenant_id
+		dataType: string
+		summarizeBy: none
+		sourceColumn: tenant_id
+
+	column event_id
+		dataType: string
+		summarizeBy: none
+		sourceColumn: event_id
+
+	column user_key
+		dataType: string
+		summarizeBy: none
+		sourceColumn: user_key
+
+	column feature_id
+		dataType: string
+		summarizeBy: none
+		sourceColumn: feature_id
+
+	column event_date
+		dataType: dateTime
+		formatString: yyyy-mm-dd
+		summarizeBy: none
+		sourceColumn: event_date
+
+	column occurred_at
+		dataType: dateTime
+		formatString: yyyy-mm-dd hh:nn:ss
+		summarizeBy: none
+		sourceColumn: occurred_at
+
+	column event_type
+		dataType: string
+		summarizeBy: none
+		sourceColumn: event_type
+
+	column duration_seconds
+		dataType: int64
+		summarizeBy: none
+		sourceColumn: duration_seconds
+
+	column feedback_text
+		dataType: string
+		summarizeBy: none
+		sourceColumn: feedback_text
+
+	column has_feedback_text
+		dataType: boolean
+		summarizeBy: none
+		sourceColumn: has_feedback_text
+
+	column pii_status
+		dataType: string
+		summarizeBy: none
+		sourceColumn: pii_status
+
+	column silver_version
+		dataType: int64
+		summarizeBy: none
+		sourceColumn: silver_version
+
+	partition fact_usage_event = entity
+		mode: directLake
+		source
+			entityName: fact_usage_event
+			schemaName: product
+			expressionSource: 'DirectLake - Gold'

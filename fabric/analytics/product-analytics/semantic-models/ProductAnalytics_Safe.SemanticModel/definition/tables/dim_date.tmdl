@@ -1,0 +1,60 @@
+table dim_date
+
+	column date
+		dataType: dateTime
+		isKey
+		formatString: yyyy-mm-dd
+		summarizeBy: none
+		sourceColumn: date
+
+	column year
+		dataType: int64
+		summarizeBy: none
+		sourceColumn: year
+
+	column quarter
+		dataType: int64
+		summarizeBy: none
+		sourceColumn: quarter
+
+	column month
+		dataType: int64
+		summarizeBy: none
+		sourceColumn: month
+
+	column month_name
+		dataType: string
+		summarizeBy: none
+		sourceColumn: month_name
+
+	column day
+		dataType: int64
+		summarizeBy: none
+		sourceColumn: day
+
+	column day_of_week
+		dataType: int64
+		summarizeBy: none
+		sourceColumn: day_of_week
+
+	column day_name
+		dataType: string
+		summarizeBy: none
+		sourceColumn: day_name
+
+	column iso_week
+		dataType: int64
+		summarizeBy: none
+		sourceColumn: iso_week
+
+	column is_weekend
+		dataType: boolean
+		summarizeBy: none
+		sourceColumn: is_weekend
+
+	partition dim_date = entity
+		mode: directLake
+		source
+			entityName: dim_date
+			schemaName: product
+			expressionSource: 'DirectLake - Gold'

@@ -1,0 +1,24 @@
+table dim_feature
+
+	column feature_id
+		dataType: string
+		isKey
+		summarizeBy: none
+		sourceColumn: feature_id
+
+	column feature_name
+		dataType: string
+		summarizeBy: none
+		sourceColumn: feature_name
+
+	column feature_category
+		dataType: string
+		summarizeBy: none
+		sourceColumn: feature_category
+
+	partition dim_feature = entity
+		mode: directLake
+		source
+			entityName: dim_feature
+			schemaName: product
+			expressionSource: 'DirectLake - Gold'

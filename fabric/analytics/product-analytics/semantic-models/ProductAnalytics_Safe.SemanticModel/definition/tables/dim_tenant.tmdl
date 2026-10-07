@@ -1,0 +1,14 @@
+table dim_tenant
+
+	column tenant_id
+		dataType: string
+		isKey
+		summarizeBy: none
+		sourceColumn: tenant_id
+
+	partition dim_tenant = entity
+		mode: directLake
+		source
+			entityName: dim_tenant
+			schemaName: product
+			expressionSource: 'DirectLake - Gold'

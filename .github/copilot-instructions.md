@@ -10,7 +10,7 @@ Follow `.github/CONTRIBUTING.md`. Key rules:
   into `main` with exactly one `Closes #<issue>` reference and complete the PR
   template.
 - Use English everywhere. Use only the example GUIDs
-  `00000000-0000-4000-8000-000000000001` to `...0012`. Never commit secrets,
+  `00000000-0000-4000-8000-000000000001` to `...0019`. Never commit secrets,
   real identifiers, personal data or notebook outputs.
 - Edit Python sources in `src/`, then regenerate notebooks with
   `python tools/build_notebooks.py`. Do not edit generated code cells directly.

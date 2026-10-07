@@ -1,0 +1,15 @@
+model Model
+	culture: en-US
+	defaultPowerBIDataSourceVersion: powerBI_V3
+	discourageImplicitMeasures
+
+ref table fact_usage_event
+ref table dim_user
+ref table dim_feature
+ref table dim_tenant
+ref table dim_date
+
+ref role TenantA
+ref role TenantB
+ref role TenantC
+ref role UnilyAll

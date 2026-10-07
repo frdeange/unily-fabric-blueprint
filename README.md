@@ -16,6 +16,10 @@ Public reference implementation for synthetic multi-tenant product analytics.
 | `ProductAnalytics_GoldPipeline` | Gold stage: incremental Silver-to-Gold; a no-op when Silver has not changed. |
 | `ProductAnalytics_Demo` | Reproduction only: synthetic RAW load (`Build`), then the Silver and Gold pipelines. Never schedule. |
 
+| Semantic model | Purpose |
+| --- | --- |
+| `ProductAnalytics_Safe` | Direct Lake model over Gold in the Analytics workspace, with per-tenant row-level security ([semantic model](docs/semantic-model.md)). |
+
 Each stage pipeline is triggered independently, so stages can have different
 cadences, retries and failure handling. Only the reproduction pipeline chains
 them. The trigger strategy (schedules or events) is an open decision (#23).
@@ -43,10 +47,12 @@ production runtime identity are not implemented yet.
 - `.github/ISSUE_TEMPLATE/`: structured issue forms.
 - `docs/architecture.md`: target workspaces (Data, Analytics, Vault per
   environment), access model and the mandatory naming convention.
+- `docs/semantic-model.md`: semantic model access pattern, RLS roles and the
+  post-deployment runbook.
 
 Items follow `fabric/<domain>/<type>/<Name>.<FabricType>/`. Keep each item's
-definition and `.platform` together. Semantic models will use TMDL under
-`semantic-models/`, and Variable Libraries will use `variable-libraries/`.
+definition and `.platform` together. Semantic models use TMDL under
+`semantic-models/`, and Variable Libraries use `variable-libraries/`.
 Support will follow the same domain layout when its sanitized definitions are
 added. Do not add empty placeholder folders or duplicate code for dev/pre/prod.
 Environment references belong in private configuration, not domain folders.
@@ -213,10 +219,13 @@ runtime/Spark verification and a review of the existing Silver completion marker
 `main` through the `dev` gate: first the Vault lakehouse, then the Data
 lakehouses, then `ProductAnalytics_Config`, the two Product notebooks and the two
 pipelines in one publication, so pipeline references to notebooks and to the other
-pipeline resolve to the deployed item IDs. It uses
+pipeline resolve to the deployed item IDs. Finally it publishes
+`ProductAnalytics_Safe` to the Analytics workspace, pointed at the deployed Gold
+lakehouse. It uses
 `fabric-cicd` 1.3.0 with Azure CLI OIDC credentials. It does not call orphan
-cleanup, create workspace folders, deploy models/agents, execute notebooks or
-refresh data. Lakehouses are created schema-enabled and empty; existing item IDs
+cleanup, create workspace folders, deploy agents, execute notebooks or
+refresh data or models. Connection binding, refresh, RLS role members and sharing are
+separately approved post-deployment steps ([semantic model](docs/semantic-model.md)). Lakehouses are created schema-enabled and empty; existing item IDs
 are verified after update.
 The deployment is not atomic; a failed publication may require a reviewed retry.
 
@@ -228,7 +237,8 @@ An explicit `dev` value set is generated and activated by the package.
 
 After publication, definition readback checks notebook cell content, absence
 of outputs, configured library values, the active value set, and pipeline
-activities, dependencies, parameters and resolved references. It also checks
+activities, dependencies, parameters and resolved references, and the semantic
+model tables, columns, measures, relationships, roles and Gold source. It also checks
 that pre-existing item IDs survive, lakehouses are schema-enabled, and no
 unexpected items appear/disappear (SQL analytics endpoints created by Fabric for
 each lakehouse are expected).
@@ -271,3 +281,5 @@ It must never run automatically as part of a deployment.
    and Gold exits without writes when Silver has not changed.
    Rerunning `ProductAnalytics_Demo` against populated Bronze fails by design
    in `Build` unless `allow_synthetic_overwrite` is explicitly true.
+4. After the first deployment, complete the semantic model post-deployment steps
+   ([semantic model](docs/semantic-model.md)).

@@ -1,0 +1,15 @@
+relationship fact_tenant
+	fromColumn: fact_usage_event.tenant_id
+	toColumn: dim_tenant.tenant_id
+
+relationship fact_user
+	fromColumn: fact_usage_event.user_key
+	toColumn: dim_user.user_key
+
+relationship fact_feature
+	fromColumn: fact_usage_event.feature_id
+	toColumn: dim_feature.feature_id
+
+relationship fact_date
+	fromColumn: fact_usage_event.event_date
+	toColumn: dim_date.date

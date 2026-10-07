@@ -1,0 +1,8 @@
+role TenantB
+	modelPermission: read
+
+	tablePermission dim_tenant = [tenant_id] = "tenant_b"
+
+	tablePermission dim_user = [tenant_id] = "tenant_b"
+
+	tablePermission fact_usage_event = [tenant_id] = "tenant_b"

@@ -11,7 +11,7 @@ from pathlib import Path
 from environment import workspace_names
 from fabric_api import call, find_workspace, list_all
 from prepare_deployment import (DEFAULT_WORKSPACE, ID_FIELDS, ITEMS, LIBRARY_NAME, ROOT, STAGES, load_settings,
-                                logical_ids, prepare, runtime_values)
+                                logical_ids, model_summary, prepare, read_parts, runtime_values)
 
 # Fabric creates one SQL analytics endpoint per lakehouse, with the same display name.
 COMPANIONS = {"Lakehouse": "SQLEndpoint"}
@@ -120,6 +120,17 @@ def verify_definitions(credential, workspace, items, target, values):
                 raise RuntimeError("Variable Library dev value set is not active")
 
 
+def verify_model(credential, workspace, items, target):
+    """The deployed TMDL keeps the authored tables, measures, relationships, roles and Gold source."""
+    for name, (kind, _) in ITEMS["analytics"].items():
+        item = find_item(items, name, kind, required=True)
+        parts = decode_parts(call(
+            credential, f"workspaces/{workspace}/semanticModels/{item['id']}/getDefinition?format=TMDL", {}))
+        expected = model_summary(read_parts(target / f"{name}.{kind}"))
+        if model_summary(parts) != expected:
+            raise RuntimeError(f"Semantic model readback mismatch: {name}")
+
+
 def resolve_ids(workspaces, data_items, vault_items):
     lakehouse = lambda items, name: find_item(items, name, "Lakehouse", required=True)["id"]
     ids = {
@@ -149,6 +160,7 @@ def deploy(credential, environment, publish):
     with tempfile.TemporaryDirectory(prefix="fabric-deploy-") as directory:
         temp = Path(directory)
         values = None
+        stages = {}
         for index, (layer, kinds) in enumerate(STAGES):
             if "VariableLibrary" in kinds:
                 ids = resolve_ids(workspaces, inventory("data"), inventory("vault"))
@@ -157,12 +169,16 @@ def deploy(credential, environment, publish):
                 values = runtime_values(settings, ids)
             stage = temp / f"stage-{index}"
             prepare(ROOT, stage, layer, kinds, environment, values)
+            stages[(layer, kinds)] = stage
             publish(workspaces[layer], stage, list(kinds))
         after = {layer: inventory(layer) for layer in names}
         for layer in names:
             verify_inventory(layer, before[layer], after[layer])
             verify_lakehouses(credential, workspaces[layer], layer, after[layer])
-        verify_definitions(credential, workspaces["data"], after["data"], temp / f"stage-{len(STAGES) - 1}", values)
+        verify_definitions(credential, workspaces["data"], after["data"],
+                           stages[("data", ("VariableLibrary", "Notebook", "DataPipeline"))], values)
+        verify_model(credential, workspaces["analytics"], after["analytics"],
+                     stages[("analytics", ("SemanticModel",))])
     return {layer: sorted(items) for layer, items in ITEMS.items()}
 
 
@@ -185,7 +201,7 @@ def main():
     report = deploy(credential, environment, publish)
     for layer, items in report.items():
         print(f"{workspace_names(environment)[layer]}: {', '.join(items) or 'no items yet'}")
-    print("Published and verified by readback. No jobs executed.")
+    print("Published and verified by readback. No jobs or refreshes executed.")
 
 
 if __name__ == "__main__":
