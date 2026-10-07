@@ -2,8 +2,9 @@
 
 `ProductAnalytics_Safe` is the business semantic model for product analytics.
 It lives in `Unily-Analytics-<Env>`, reads the Gold star schema in
-`Unily-Data-<Env>` ([contract](gold-contract.md)) and isolates tenants with
-row-level security (RLS). Names follow [architecture](architecture.md#3-naming-convention).
+`Unily-Data-<Env>` ([contract](gold-contract.md)), isolates tenants with
+row-level security (RLS) and hides technical columns from tenants with
+object-level security (OLS). Names follow [architecture](architecture.md#3-naming-convention).
 
 Definition: `fabric/analytics/product-analytics/semantic-models/ProductAnalytics_Safe.SemanticModel/` (TMDL).
 
@@ -22,6 +23,8 @@ The pattern was validated with seven synthetic users in #28:
    Gold, its OneLake files or its SQL analytics endpoint.
 3. **Semantic model RLS.** Roles filter `tenant_id` on `dim_tenant`,
    `dim_user` and `fact_usage_event`. A consumer outside every role is denied.
+4. **Semantic model OLS.** The same tenant roles hide technical audit
+   columns (see [Object-level security](#object-level-security)).
 
 The workspace identity has the Viewer role on `Unily-Data-<Env>` and is the
 only member of the Gold OneLake security role `AnalyticsReader` (`Tables`, read).
@@ -48,15 +51,54 @@ when the same rules must also protect other engines.
   (`tenant_id`), `dim_user` (`user_key`, globally unique), `dim_feature`
   (`feature_id`) and `dim_date` (`event_date` to `date`).
 
-| Role | Filter | Members (`<Env>` groups) |
-| --- | --- | --- |
-| `TenantA` | `[tenant_id] = "tenant_a"` | `Unily-Analytics-<Env>-TenantA` |
-| `TenantB` | `[tenant_id] = "tenant_b"` | `Unily-Analytics-<Env>-TenantB` |
-| `TenantC` | `[tenant_id] = "tenant_c"` | `Unily-Analytics-<Env>-TenantC` |
-| `UnilyAll` | none | `Unily-Analytics-<Env>-AllTenants` |
+| Role | Filter | Hidden columns (OLS) | Members (`<Env>` groups) |
+| --- | --- | --- | --- |
+| `TenantA` | `[tenant_id] = "tenant_a"` | `fact_usage_event[pii_status]`, `[silver_version]` | `Unily-Analytics-<Env>-TenantA` |
+| `TenantB` | `[tenant_id] = "tenant_b"` | same | `Unily-Analytics-<Env>-TenantB` |
+| `TenantC` | `[tenant_id] = "tenant_c"` | same | `Unily-Analytics-<Env>-TenantC` |
+| `UnilyAll` | none | none | `Unily-Analytics-<Env>-AllTenants` |
 
 A tenant role exists for every tenant in the environment settings; deployment
-rejects a configured tenant without a role or a role with a different filter.
+rejects a configured tenant without a role, a role with a different filter or
+a role whose hidden objects differ from the table above.
+
+## Object-level security
+
+Tenant roles set `metadataPermission: none` on two technical audit columns of
+`fact_usage_event`: `pii_status` (pseudonymisation outcome) and
+`silver_version` (lineage). They describe the platform, not the tenant's
+product usage. `feedback_text` stays visible to tenants: it is already
+protected in Silver and filtered by RLS. `UnilyAll` sees every object.
+
+```tmdl
+tablePermission fact_usage_event = [tenant_id] = "tenant_a"
+
+	columnPermission pii_status
+		metadataPermission: none
+```
+
+Behaviour:
+
+- A hidden column behaves as if it did not exist. A query that references it
+  fails with an error saying the column cannot be found; it is also absent
+  from the schema and the field list. No measure references the hidden
+  columns, so every measure keeps working for tenants.
+- OLS applies to consumers with item access (Read/Build) and to workspace
+  Viewers. Workspace Admins, Members and Contributors bypass RLS and OLS.
+- **RLS and OLS must live in the same roles.** A user who belongs to one role
+  with RLS and another role with OLS gets an error on every query. Here OLS is
+  added to the tenant roles that already filter rows, and `UnilyAll` has
+  neither, so a user in a tenant group and `AllTenants` sees the union
+  without error. Do not create OLS-only roles.
+- OLS cannot hide a table that breaks a relationship chain, and a measure that
+  references a hidden object becomes unavailable to the role. Hide new objects
+  only after checking both.
+- Copilot in Power BI and Fabric, and Data Agents that use the model as a
+  source, query as the signed-in user and respect RLS and OLS. Q&A, Quick
+  insights, Smart narrative and Excel data types do not support models with
+  OLS.
+- Marking a column hidden (`isHidden`) only hides it in report field lists; it
+  is not security. OLS is the enforcement.
 
 ## Deployment
 
@@ -66,7 +108,8 @@ Data items. The repository stores two example placeholders in
 (the Gold lakehouse). Staging replaces them with the resolved IDs, so the
 source becomes `https://onelake.dfs.fabric.microsoft.com/<Data>/<Gold>`.
 After publication, readback compares tables, columns, measures, partitions,
-relationships, roles and the source with the staged copy.
+relationships, roles (filters and hidden objects) and the source with the
+staged copy.
 
 Fabric drops role members and connection bindings from a definition, so the
 deployment never sets them and never refreshes the model.
@@ -102,7 +145,8 @@ binding and the role members survive; repeat steps 1 to 4 if they do not.
 | Member of `Unily-Analytics-<Env>-TenantA` | Only `tenant_a` rows (dev: 1,344 events, 12 users) |
 | Member of `Unily-Analytics-<Env>-TenantB` | Only `tenant_b` rows (dev: 2,016 events, 18 users) |
 | Member of `Unily-Analytics-<Env>-TenantC` | Only `tenant_c` rows (dev: 2,688 events, 24 users) |
-| Member of `Unily-Analytics-<Env>-AllTenants` | All tenants |
+| Tenant group member, query on `fact_usage_event[pii_status]` or `[silver_version]` | Error: column cannot be found |
+| Member of `Unily-Analytics-<Env>-AllTenants` | All tenants; hidden columns queryable |
 | Model access without a role | Denied (`RLSNotAuthorizedForModel`) |
 | No model access | Denied (`PowerBIEntityNotFound`) |
 | Any consumer, Gold SQL analytics endpoint or OneLake | Denied |

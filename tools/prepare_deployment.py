@@ -44,6 +44,9 @@ ALLOWED_FILES = {
 }
 # Semantic model roles are listed per item; one role per tenant plus the unfiltered internal role.
 MODEL_ROLES = {"TenantA": "tenant_a", "TenantB": "tenant_b", "TenantC": "tenant_c", "UnilyAll": None}
+# Object-level security for tenant roles: technical audit columns that tenants must not see. OLS lives
+# only in roles that also filter rows, because RLS and OLS from different roles cannot be combined.
+TENANT_HIDDEN_COLUMNS = {"fact_usage_event": ("pii_status", "silver_version")}
 DEFAULT_WORKSPACE = "00000000-0000-0000-0000-000000000000"
 # The model reads Gold in the Data workspace; these placeholders are replaced at staging.
 DATA_WORKSPACE_PLACEHOLDER = "00000000-0000-4000-8000-000000000019"
@@ -71,7 +74,7 @@ def allowed_files(kind):
 
 def model_summary(parts):
     """Authored shape of a TMDL model (TMDL file path -> text), ignoring metadata Fabric may add."""
-    tables, roles, relationships, sources = {}, {}, set(), set()
+    tables, roles, hidden, relationships, sources = {}, {}, {}, set(), set()
     for path, text in parts.items():
         if not path.endswith(".tmdl"):
             continue
@@ -91,17 +94,29 @@ def model_summary(parts):
                 table["partitions"].add((stripped[12:], following("schemaName"), following("expressionSource"),
                                          next(l.strip()[6:] for l in lines[index - 3:index] if "mode:" in l)))
             elif depth == 0 and stripped.startswith("role "):
-                role = roles.setdefault(stripped[5:], {})
+                role_name = stripped[5:]
+                role = roles.setdefault(role_name, {})
             elif depth == 1 and stripped.startswith("tablePermission "):
-                name, expression = stripped[16:].split(" = ", 1)
-                role[name] = " ".join(expression.split())
+                name, _, expression = stripped[16:].partition(" = ")
+                permission_table = name
+                if expression:
+                    role[name] = " ".join(expression.split())
+            elif depth == 2 and stripped.startswith("columnPermission "):
+                column, _, inline = stripped[17:].partition(" = ")
+                if (inline or following("metadataPermission")) == "none":
+                    hidden.setdefault(role_name, {}).setdefault(permission_table, []).append(column)
+            elif depth == 2 and stripped == "metadataPermission: none":
+                hidden.setdefault(role_name, {}).setdefault(permission_table, []).append("*")
             elif depth == 0 and stripped.startswith("relationship "):
                 relationships.add((following("fromColumn"), following("toColumn")))
             elif "AzureStorage.DataLake(" in stripped:
                 sources.add(stripped.split('"')[1])
     for table in tables.values():
         table["partitions"] = sorted(table["partitions"])
-    return {"tables": tables, "roles": roles, "relationships": sorted(relationships), "sources": sorted(sources)}
+    hidden = {role: {table: sorted(columns) for table, columns in permissions.items()}
+              for role, permissions in hidden.items()}
+    return {"tables": tables, "roles": roles, "hidden": hidden, "relationships": sorted(relationships),
+            "sources": sorted(sources)}
 
 
 def read_parts(folder):
@@ -128,6 +143,10 @@ def check_model(summary, settings=None):
             raise ValueError(f"Unexpected row-level security filter in role: {role}")
     if set(summary["roles"]) != set(MODEL_ROLES):
         raise ValueError("Unexpected semantic model roles")
+    tenant_hidden = {table: sorted(columns) for table, columns in TENANT_HIDDEN_COLUMNS.items()}
+    for role, tenant in MODEL_ROLES.items():
+        if summary["hidden"].get(role, {}) != (tenant_hidden if tenant else {}):
+            raise ValueError(f"Unexpected object-level security in role: {role}")
     covered = {tenant for tenant in MODEL_ROLES.values() if tenant}
     if settings is not None and tenants(settings) - covered:
         raise ValueError("A configured tenant has no row-level security role")

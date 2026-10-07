@@ -270,6 +270,8 @@ class SemanticModelTests(unittest.TestCase):
         check_model(summary, settings)
         self.assertEqual(summary["roles"]["UnilyAll"], {})
         self.assertEqual(summary["roles"]["TenantA"]["fact_usage_event"], '[tenant_id] = "tenant_a"')
+        self.assertEqual(summary["hidden"]["TenantA"], {"fact_usage_event": ["pii_status", "silver_version"]})
+        self.assertNotIn("UnilyAll", summary["hidden"])
         self.assertIn(("fact_usage_event.user_key", "dim_user.user_key"), summary["relationships"])
         extra = json.loads(settings["sources_json"]) + [
             {"tenant_id": "tenant_d", "users_table": "users_tenant_d", "events_table": "events_tenant_d"}]
@@ -298,6 +300,20 @@ class SemanticModelTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "role: TenantA"):
                 check_scope(root)
 
+    def test_missing_or_extra_object_level_security_is_rejected(self):
+        changes = {
+            "TenantB.tmdl": lambda text: text.replace("columnPermission silver_version", "columnPermission event_id"),
+            "TenantC.tmdl": lambda text: text.split("\t\tcolumnPermission")[0],
+            "UnilyAll.tmdl": lambda text: text + "\n\ttablePermission dim_user\n\t\tmetadataPermission: none\n",
+        }
+        for file, change in changes.items():
+            with self.subTest(file=file), tempfile.TemporaryDirectory() as directory:
+                root, definition = self.copy_model(directory)
+                role = definition / "roles" / file
+                role.write_text(change(role.read_text()), encoding="utf-8")
+                with self.assertRaisesRegex(ValueError, "object-level security in role: " + file[:-5]):
+                    check_scope(root)
+
     def test_column_outside_gold_contract_is_rejected(self):
         with tempfile.TemporaryDirectory() as directory:
             root, definition = self.copy_model(directory)
@@ -325,7 +341,8 @@ class SemanticModelTests(unittest.TestCase):
             for item in fabric.items[workspace]:
                 if item["type"] == "SemanticModel":
                     file = "definition/roles/TenantB.tmdl"
-                    fabric.definitions[item["id"]][file] = b"role TenantB\n\tmodelPermission: read\n"
+                    text = fabric.definitions[item["id"]][file].decode()
+                    fabric.definitions[item["id"]][file] = text.split("\t\tcolumnPermission")[0].encode()
         fabric.publish = tampered
         with self.assertRaisesRegex(RuntimeError, "Semantic model readback mismatch"):
             fabric.run()

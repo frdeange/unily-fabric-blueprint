@@ -6,3 +6,9 @@ role TenantA
 	tablePermission dim_user = [tenant_id] = "tenant_a"
 
 	tablePermission fact_usage_event = [tenant_id] = "tenant_a"
+
+		columnPermission pii_status
+			metadataPermission: none
+
+		columnPermission silver_version
+			metadataPermission: none
