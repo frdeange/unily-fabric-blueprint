@@ -13,8 +13,9 @@ sys.path.insert(0, str(ROOT / "tools"))
 from deploy_environment import deploy, find_item, verify_inventory
 from environment import workspace_name, workspace_names
 from fabric_api import find_workspace, operation_endpoint, wait_operation
-from prepare_deployment import (DEFAULT_WORKSPACE, ID_FIELDS, ITEMS, check_scope, load_settings, prepare,
-                                runtime_values, variables_definition)
+from prepare_deployment import (DATA_WORKSPACE_PLACEHOLDER, DEFAULT_WORKSPACE, GOLD_PLACEHOLDER, ID_FIELDS, ITEMS,
+                                MODEL_NAME, ONELAKE, check_model, check_scope, item_folder, load_settings,
+                                model_summary, prepare, read_parts, runtime_values, variables_definition)
 
 
 def values():
@@ -40,8 +41,8 @@ class FakeFabric:
         parts = path.split("/")
         item = parts[3]
         if path.endswith("getDefinition") or "getDefinition?" in path:
-            file, content = self.definitions[item]
-            return {"definition": {"parts": [{"path": file, "payload": base64.b64encode(content).decode()}]}}
+            return {"definition": {"parts": [{"path": file, "payload": base64.b64encode(content).decode()}
+                                             for file, content in self.definitions[item].items()]}}
         if parts[2] == "lakehouses":
             return {"properties": {"defaultSchema": "dbo"} if self.schema_enabled else {}}
         return {"properties": {"activeValueSetName": "dev"}}
@@ -62,6 +63,10 @@ class FakeFabric:
         # Like fabric-cicd: resolve logical IDs within this publication and the workspace placeholder.
         for folder in directory.iterdir():
             name, kind = folder.name.rsplit(".", 1)
+            target = find_item(self.items[workspace], name, kind)["id"]
+            if kind == "SemanticModel":
+                self.definitions[target] = {f: c.encode() for f, c in read_parts(folder).items() if f != ".platform"}
+                continue
             file = {"Notebook": "notebook-content.ipynb", "VariableLibrary": "variables.json",
                     "DataPipeline": "pipeline-content.json"}.get(kind)
             if file:
@@ -70,7 +75,7 @@ class FakeFabric:
                     for old, new in logical.items():
                         content = content.replace(old, new)
                     content = content.replace(DEFAULT_WORKSPACE, workspace)
-                self.definitions[find_item(self.items[workspace], name, kind)["id"]] = (file, content.encode())
+                self.definitions[target] = {file: content.encode()}
 
     def run(self):
         with patch("deploy_environment.list_all", self.list_all), patch("deploy_environment.call", self.call):
@@ -172,17 +177,23 @@ class DeploymentTests(unittest.TestCase):
         fabric.run()
         data, vault, analytics = (fabric.workspace(layer) for layer in ("data", "vault", "analytics"))
         self.assertEqual(fabric.published, [
-            (vault, ("Lakehouse",)), (data, ("Lakehouse",)), (data, ("VariableLibrary", "Notebook", "DataPipeline"))])
+            (vault, ("Lakehouse",)), (data, ("Lakehouse",)), (data, ("VariableLibrary", "Notebook", "DataPipeline")),
+            (analytics, ("SemanticModel",))])
         self.assertEqual({i["displayName"] for i in fabric.items[vault] if i["type"] == "Lakehouse"}, {"Identity"})
-        self.assertEqual(fabric.items[analytics], [])
+        self.assertEqual([(i["displayName"], i["type"]) for i in fabric.items[analytics]],
+                         [(MODEL_NAME, "SemanticModel")])
+        model = fabric.definitions[fabric.items[analytics][0]["id"]]
+        gold_id = find_item(fabric.items[data], "Gold", "Lakehouse")["id"]
+        self.assertEqual(model_summary({f: c.decode() for f, c in model.items()})["sources"],
+                         [f"{ONELAKE}/{data}/{gold_id}"])
         library = find_item(fabric.items[data], "ProductAnalytics_Config", "VariableLibrary")
-        deployed = {v["name"]: v["value"] for v in json.loads(fabric.definitions[library["id"]][1])["variables"]}
+        deployed = {v["name"]: v["value"] for v in json.loads(fabric.definitions[library["id"]]["variables.json"])["variables"]}
         self.assertEqual(deployed["data_workspace_id"], data)
         self.assertEqual(deployed["vault_workspace_id"], vault)
         self.assertEqual(deployed["identity_id"], find_item(fabric.items[vault], "Identity", "Lakehouse")["id"])
         self.assertEqual(deployed["bronze_id"], find_item(fabric.items[data], "Bronze", "Lakehouse")["id"])
         self.assertFalse(deployed["allow_synthetic_overwrite"])
-        demo = json.loads(fabric.definitions[find_item(fabric.items[data], "ProductAnalytics_Demo", "DataPipeline")["id"]][1])
+        demo = json.loads(fabric.definitions[find_item(fabric.items[data], "ProductAnalytics_Demo", "DataPipeline")["id"]]["pipeline-content.json"])
         build, silver, gold = demo["properties"]["activities"]
         self.assertEqual(build["typeProperties"]["notebookId"],
                          find_item(fabric.items[data], "ProductAnalytics_Build", "Notebook")["id"])
@@ -200,8 +211,9 @@ class DeploymentTests(unittest.TestCase):
             original(workspace, directory, kinds)
             for item in fabric.items[workspace]:
                 if item["type"] == "DataPipeline" and item["displayName"] == "ProductAnalytics_SilverPipeline":
-                    file, content = fabric.definitions[item["id"]]
-                    fabric.definitions[item["id"]] = (file, content.replace(b'"Validate"', b'"Skipped"'))
+                    file = "pipeline-content.json"
+                    fabric.definitions[item["id"]][file] = fabric.definitions[item["id"]][file].replace(
+                        b'"Validate"', b'"Skipped"')
         fabric.publish = tampered
         with self.assertRaisesRegex(RuntimeError, "Pipeline definition readback mismatch"):
             fabric.run()
@@ -244,6 +256,79 @@ class DeploymentTests(unittest.TestCase):
             verify_inventory(layer, before, before + [{"displayName": "Other", "type": "Notebook", "id": "d"}])
         with self.assertRaises(ValueError):
             find_item([{"displayName": name, "type": "Notebook", "id": "e"}], name, "Lakehouse")
+
+
+class SemanticModelTests(unittest.TestCase):
+    def copy_model(self, directory):
+        root = Path(directory)
+        shutil.copytree(ROOT / "fabric", root / "fabric")
+        return root, item_folder(root, "analytics", MODEL_NAME) / "definition"
+
+    def test_model_mirrors_gold_contract_and_isolates_every_tenant(self):
+        settings = load_settings(ROOT, "dev")
+        summary = model_summary(read_parts(item_folder(ROOT, "analytics", MODEL_NAME)))
+        check_model(summary, settings)
+        self.assertEqual(summary["roles"]["UnilyAll"], {})
+        self.assertEqual(summary["roles"]["TenantA"]["fact_usage_event"], '[tenant_id] = "tenant_a"')
+        self.assertIn(("fact_usage_event.user_key", "dim_user.user_key"), summary["relationships"])
+        extra = json.loads(settings["sources_json"]) + [
+            {"tenant_id": "tenant_d", "users_table": "users_tenant_d", "events_table": "events_tenant_d"}]
+        with self.assertRaisesRegex(ValueError, "no row-level security role"):
+            check_model(summary, {**settings, "sources_json": json.dumps(extra)})
+
+    def test_staged_model_reads_the_resolved_gold(self):
+        current = values()
+        with tempfile.TemporaryDirectory() as directory:
+            stage = Path(directory) / "analytics"
+            prepare(ROOT, stage, "analytics", ("SemanticModel",), "dev", current)
+            parts = read_parts(stage / f"{MODEL_NAME}.SemanticModel")
+            text = "".join(parts.values())
+            self.assertNotIn(DATA_WORKSPACE_PLACEHOLDER, text)
+            self.assertNotIn(GOLD_PLACEHOLDER, text)
+            self.assertEqual(model_summary(parts)["sources"],
+                             [f"{ONELAKE}/{current['data_workspace_id']}/{current['gold_id']}"])
+            with self.assertRaises(ValueError):
+                prepare(ROOT, Path(directory) / "missing", "analytics", ("SemanticModel",), "dev")
+
+    def test_weakened_role_filter_is_rejected(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root, definition = self.copy_model(directory)
+            role = definition / "roles" / "TenantA.tmdl"
+            role.write_text(role.read_text().replace('"tenant_a"', '"tenant_b"'), encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "role: TenantA"):
+                check_scope(root)
+
+    def test_column_outside_gold_contract_is_rejected(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root, definition = self.copy_model(directory)
+            table = definition / "tables" / "dim_user.tmdl"
+            table.write_text(table.read_text().replace("sourceColumn: event_count", "sourceColumn: email"),
+                             encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "Gold contract"):
+                check_scope(root)
+
+    def test_model_referencing_another_item_is_rejected(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root, definition = self.copy_model(directory)
+            source = definition / "expressions.tmdl"
+            source.write_text(source.read_text().replace(GOLD_PLACEHOLDER, "00000000-0000-4000-8000-000000000010"),
+                              encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "placeholders only"):
+                check_scope(root)
+
+    def test_changed_model_readback_is_rejected(self):
+        fabric = FakeFabric()
+        original = fabric.publish
+
+        def tampered(workspace, directory, kinds):
+            original(workspace, directory, kinds)
+            for item in fabric.items[workspace]:
+                if item["type"] == "SemanticModel":
+                    file = "definition/roles/TenantB.tmdl"
+                    fabric.definitions[item["id"]][file] = b"role TenantB\n\tmodelPermission: read\n"
+        fabric.publish = tampered
+        with self.assertRaisesRegex(RuntimeError, "Semantic model readback mismatch"):
+            fabric.run()
 
 
 if __name__ == "__main__":

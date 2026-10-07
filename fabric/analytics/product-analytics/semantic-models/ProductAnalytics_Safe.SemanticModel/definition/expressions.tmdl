@@ -1,0 +1,7 @@
+/// Direct Lake on OneLake source. Placeholders: Data workspace (...0019) and the Gold logical ID (...0011),
+/// replaced with the resolved IDs when the deployment stage is prepared.
+expression 'DirectLake - Gold' =
+		let
+			Source = AzureStorage.DataLake("https://onelake.dfs.fabric.microsoft.com/00000000-0000-4000-8000-000000000019/00000000-0000-4000-8000-000000000011", [HierarchicalNavigation=true])
+		in
+			Source

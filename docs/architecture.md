@@ -88,7 +88,8 @@ Tokens:
 | `<Domain>` | `ProductAnalytics`, `Support`, `Shared` |
 | `<schema>` | `product`, `support`, `shared` |
 | `<Audience>` | `Safe` (pseudonymous, RLS), `Identified` (Vault only), `Ops` (engineering) |
-| `<Role>` | `Admins`, `Contributors`, `Viewers` |
+| `<Purpose>` | `Engineers`, `Readers` (workspace roles); `Tenant<X>`, `AllTenants` (consumers) |
+| `<X>` | Tenant letter in the synthetic scenario: `A`, `B`, `C` |
 
 Patterns:
 
@@ -106,9 +107,12 @@ Patterns:
 | Data pipeline, reproduction only | `<Domain>_Demo` | `ProductAnalytics_Demo` |
 | Semantic model | `<Domain>_<Audience>` | `ProductAnalytics_Safe`, `Support_Safe`, `ProductAnalytics_Ops` |
 | Data Agent | `<Domain>_<Audience>_Agent` | `ProductAnalytics_Safe_Agent` |
-| Entra security group | `SG-Unily-<Layer>-<Env>-<Role>` | `SG-Unily-Data-Prod-Contributors` |
-| Consumer group | `SG-Unily-Analytics-<Env>-<Domain>-Consumers` | `SG-Unily-Analytics-Prod-Support-Consumers` |
-| Deployment identity | `SP-Unily-Deploy-<Env>` | `SP-Unily-Deploy-Dev` |
+| Semantic model RLS role | `Tenant<X>`, `UnilyAll` | `TenantA`, `UnilyAll` |
+| Entra security group (workspace role) | `Unily-<Layer>-<Env>-<Purpose>` | `Unily-Data-Dev-Engineers`, `Unily-Data-Dev-Readers` |
+| Entra security group (consumers) | `Unily-Analytics-<Env>-<Purpose>` | `Unily-Analytics-Dev-TenantA`, `Unily-Analytics-Dev-AllTenants` |
+| Workspace identity | Fabric names it after its workspace | `Unily-Analytics-Dev` |
+| Cloud connection | `conn-unily-<layer>-<env>-<source>-<type>` | `conn-unily-analytics-dev-gold-onelake` |
+| Deployment identity (app registration) | `unily-fabric-github-<env>` | `unily-fabric-github-dev` |
 | Fabric capacity (Azure, production only) | `fcunily<tier>` (lowercase alphanumeric) | `fcunilydata`, `fcunilyanalytics` |
 | GitHub Environment | `<env>` | `dev` |
 | Environment settings (no IDs) | `config/environments/<env>/<domain>.json` | `config/environments/dev/product-analytics.json` |
@@ -131,33 +135,47 @@ Current tables (all in the `product` schema of schema-enabled lakehouses):
 
 ## 4. Access model
 
-| Group | Data | Analytics | Vault |
+| Principal | Data | Analytics | Vault |
 | --- | --- | --- | --- |
 | Platform admins | Admin | Admin | Admin |
-| Data engineers | Contributor | Viewer | none |
-| Analytics developers | none | Contributor | none |
+| Data engineers (`Unily-Data-<Env>-Engineers`) | Contributor | Viewer (target) | none |
+| Data readers (`Unily-Data-<Env>-Readers`) | Viewer | none | none |
+| Analytics developers | none | Contributor (target) | none |
 | Privacy / authorized support | none | none | Viewer |
-| Business consumers | **never** | item permission or app only | **never** |
+| Business consumers (`Unily-Analytics-<Env>-Tenant<X>`, `-AllTenants`) | **never** | item permission or app only | **never** |
+| Analytics workspace identity | Viewer, plus the Gold `AnalyticsReader` OneLake role | owner | none |
 | Deployment identity | Contributor | Contributor | Contributor |
 
 - Grant access to groups, never to individual users.
 - Consumers are never workspace members. They receive item-level access to
-  semantic models, Data Agents or an app, and RLS filters by tenant.
+  semantic models, Data Agents or an app, and RLS filters by tenant
+  ([semantic model](semantic-model.md)).
+- Consumers never receive OneLake or SQL analytics endpoint access to Gold.
+  Semantic models read Gold with the Analytics workspace identity through the
+  `conn-unily-analytics-<env>-gold-onelake` connection.
+- Gold uses OneLake security roles: `DefaultReader` (Fabric default),
+  `AnalyticsReader` (the Analytics workspace identity, `Tables` read) and
+  `DataReaders` (`Unily-Data-<Env>-Readers`, `Tables` read).
 - Only the Bronze-to-Silver process writes to Vault.
 
 ## 5. Open validations
 
 | Topic | Status |
 | --- | --- |
-| Direct Lake with RLS reading Gold in another workspace (direct or OneLake shortcut) | **Unverified** (#11) |
+| Direct Lake with RLS reading Gold in another workspace | **Verified** (#28) for Direct Lake on OneLake with a fixed workspace identity and semantic model RLS; deployed as `ProductAnalytics_Safe` (#11). See [semantic model](semantic-model.md) |
 | Identity that runs Bronze-to-Silver across Data and Vault. Pipelines inject the Variable Library values as parameters, because NotebookUtils library reads do not support service principals. A pipeline-run notebook uses the pipeline's last modifier (the deployment service principal) | **Unverified** (#18): AI Functions and cross-workspace writes under a service principal. Alternative: a Workspace Identity connection |
-| Schema-enabled lakehouses with deployment tooling | Created by `fabric-cicd`; first write to the `product` schema validated in #16. Direct Lake pending (#11) |
+| Schema-enabled lakehouses with deployment tooling | Created by `fabric-cicd`; first write to the `product` schema validated in #16. Direct Lake on the `product` schema validated in #28 |
 | OneLake security as an alternative or complement to Vault | Not evaluated |
+| OneLake security RLS enforced with the consumer's identity (SSO), instead of semantic model RLS | Not evaluated; possible evolution (see [semantic model](semantic-model.md)) |
 
 ## 6. Lab deviations
 
-- No Entra security groups yet: the lab administrator owns the workspaces and
-  the deployment service principal is a direct Contributor.
+- The lab administrator owns the workspaces and the deployment service
+  principal is a direct Contributor. Only the Data reader/engineer groups and
+  the Analytics consumer groups exist; there are no admin, Analytics developer
+  or Vault groups yet.
+- Seven synthetic test users validate the consumer access matrix. Test-only
+  direct shares are documented in [semantic model](semantic-model.md).
 - Workspaces are provisioned locally by an administrator with
   `python tools/provision_environment.py` (plan by default, `--apply` to
   change). It is idempotent and never deletes workspaces or role assignments.
