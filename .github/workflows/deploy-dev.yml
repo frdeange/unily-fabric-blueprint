@@ -42,7 +42,7 @@ jobs:
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           allow-no-subscriptions: true
-      - name: Publish approved items to Data and Vault and verify readback
+      - name: Publish approved items, verify readback, bind and refresh semantic models
         env:
           FABRIC_CICD_FILE_LOGGING_ENABLED: "false"
         run: python tools/deploy_environment.py --environment dev
