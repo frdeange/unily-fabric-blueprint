@@ -20,6 +20,10 @@ Public reference implementation for synthetic multi-tenant product analytics.
 | --- | --- |
 | `ProductAnalytics_Safe` | Direct Lake model over Gold in the Analytics workspace, with per-tenant row-level security ([semantic model](docs/semantic-model.md)). |
 
+| Data Agent | Purpose |
+| --- | --- |
+| `ProductAnalytics_Safe_Agent` | Natural-language product usage questions; its only source is `ProductAnalytics_Safe`, queried as the signed-in user ([Data Agent](docs/data-agent.md)). |
+
 Each stage pipeline is triggered independently, so stages can have different
 cadences, retries and failure handling. Only the reproduction pipeline chains
 them. The trigger strategy (schedules or events) is an open decision (#23).
@@ -49,6 +53,8 @@ production runtime identity are not implemented yet.
   environment), access model and the mandatory naming convention.
 - `docs/semantic-model.md`: semantic model access pattern, RLS roles, the
   automatic rebind and refresh, and the post-deployment runbook.
+- `docs/data-agent.md`: Data Agent access pattern, definition checks, sharing
+  runbook and evaluation set.
 
 Items follow `fabric/<domain>/<type>/<Name>.<FabricType>/`. Keep each item's
 definition and `.platform` together. Semantic models use TMDL under
@@ -221,13 +227,15 @@ lakehouses, then `ProductAnalytics_Config`, the two Product notebooks and the tw
 pipelines in one publication, so pipeline references to notebooks and to the other
 pipeline resolve to the deployed item IDs. Finally it publishes
 `ProductAnalytics_Safe` to the Analytics workspace, pointed at the deployed Gold
-lakehouse. It uses
+lakehouse, together with `ProductAnalytics_Safe_Agent`, whose only source is
+that model. It uses
 `fabric-cicd` 1.3.0 with Azure CLI OIDC credentials. It does not call orphan
-cleanup, create workspace folders, deploy agents, execute notebooks or
+cleanup, create workspace folders, share agents, execute notebooks or
 refresh data. After readback it takes over each semantic model, rebinds it to
 the Gold connection and runs one Direct Lake framing refresh, failing the run
 unless the refresh completes. RLS role members and sharing are
-separately approved post-deployment steps ([semantic model](docs/semantic-model.md)). Lakehouses are created schema-enabled and empty; existing item IDs
+separately approved post-deployment steps ([semantic model](docs/semantic-model.md),
+[Data Agent](docs/data-agent.md)). Lakehouses are created schema-enabled and empty; existing item IDs
 are verified after update.
 The deployment is not atomic; a failed publication may require a reviewed retry.
 
@@ -284,4 +292,5 @@ It must never run automatically as part of a deployment.
    Rerunning `ProductAnalytics_Demo` against populated Bronze fails by design
    in `Build` unless `allow_synthetic_overwrite` is explicitly true.
 4. After the first deployment, complete the semantic model post-deployment steps
-   ([semantic model](docs/semantic-model.md)).
+   ([semantic model](docs/semantic-model.md)), then share and evaluate the Data
+   Agent ([Data Agent](docs/data-agent.md)).

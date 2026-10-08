@@ -1,0 +1,372 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/dataAgent/definition/dataSource/1.0.0/schema.json",
+  "artifactId": "00000000-0000-4000-8000-000000000018",
+  "workspaceId": "00000000-0000-0000-0000-000000000000",
+  "dataSourceInstructions": "fact_usage_event has one row per usage event. It relates to dim_tenant on tenant_id, dim_user on user_key, dim_feature on feature_id and dim_date on event_date (to dim_date[date]). Prefer the measures in fact_usage_event over column aggregations. event_type is the kind of interaction and duration_seconds its duration. dim_user[event_count] is a lifetime total per user, not a period-aware measure; use Events for period questions.",
+  "displayName": "ProductAnalytics_Safe",
+  "type": "semantic_model",
+  "userDescription": "Pseudonymized product usage of Unily tenants, with tenant row-level security.",
+  "metadata": null,
+  "elements": [
+    {
+      "id": "fact_usage_event",
+      "is_selected": true,
+      "display_name": "fact_usage_event",
+      "type": "semantic_model.table",
+      "description": null,
+      "children": [
+        {
+          "id": "fact_usage_event.tenant_id",
+          "is_selected": true,
+          "display_name": "tenant_id",
+          "type": "semantic_model.column",
+          "data_type": "String",
+          "description": null,
+          "children": []
+        },
+        {
+          "id": "fact_usage_event.event_id",
+          "is_selected": true,
+          "display_name": "event_id",
+          "type": "semantic_model.column",
+          "data_type": "String",
+          "description": null,
+          "children": []
+        },
+        {
+          "id": "fact_usage_event.user_key",
+          "is_selected": true,
+          "display_name": "user_key",
+          "type": "semantic_model.column",
+          "data_type": "String",
+          "description": null,
+          "children": []
+        },
+        {
+          "id": "fact_usage_event.feature_id",
+          "is_selected": true,
+          "display_name": "feature_id",
+          "type": "semantic_model.column",
+          "data_type": "String",
+          "description": null,
+          "children": []
+        },
+        {
+          "id": "fact_usage_event.event_date",
+          "is_selected": true,
+          "display_name": "event_date",
+          "type": "semantic_model.column",
+          "data_type": "DateTime",
+          "description": null,
+          "children": []
+        },
+        {
+          "id": "fact_usage_event.occurred_at",
+          "is_selected": true,
+          "display_name": "occurred_at",
+          "type": "semantic_model.column",
+          "data_type": "DateTime",
+          "description": null,
+          "children": []
+        },
+        {
+          "id": "fact_usage_event.event_type",
+          "is_selected": true,
+          "display_name": "event_type",
+          "type": "semantic_model.column",
+          "data_type": "String",
+          "description": null,
+          "children": []
+        },
+        {
+          "id": "fact_usage_event.duration_seconds",
+          "is_selected": true,
+          "display_name": "duration_seconds",
+          "type": "semantic_model.column",
+          "data_type": "Int64",
+          "description": null,
+          "children": []
+        },
+        {
+          "id": "fact_usage_event.feedback_text",
+          "is_selected": true,
+          "display_name": "feedback_text",
+          "type": "semantic_model.column",
+          "data_type": "String",
+          "description": null,
+          "children": []
+        },
+        {
+          "id": "fact_usage_event.has_feedback_text",
+          "is_selected": true,
+          "display_name": "has_feedback_text",
+          "type": "semantic_model.column",
+          "data_type": "Boolean",
+          "description": null,
+          "children": []
+        },
+        {
+          "id": "fact_usage_event.Events",
+          "is_selected": true,
+          "display_name": "Events",
+          "type": "semantic_model.measure",
+          "data_type": "Int64",
+          "description": null,
+          "children": []
+        },
+        {
+          "id": "fact_usage_event.Active users",
+          "is_selected": true,
+          "display_name": "Active users",
+          "type": "semantic_model.measure",
+          "data_type": "Int64",
+          "description": null,
+          "children": []
+        },
+        {
+          "id": "fact_usage_event.Total duration (s)",
+          "is_selected": true,
+          "display_name": "Total duration (s)",
+          "type": "semantic_model.measure",
+          "data_type": "Int64",
+          "description": null,
+          "children": []
+        },
+        {
+          "id": "fact_usage_event.Average duration (s)",
+          "is_selected": true,
+          "display_name": "Average duration (s)",
+          "type": "semantic_model.measure",
+          "data_type": "Double",
+          "description": null,
+          "children": []
+        },
+        {
+          "id": "fact_usage_event.Events with feedback",
+          "is_selected": true,
+          "display_name": "Events with feedback",
+          "type": "semantic_model.measure",
+          "data_type": "Int64",
+          "description": null,
+          "children": []
+        },
+        {
+          "id": "fact_usage_event.Tenants",
+          "is_selected": true,
+          "display_name": "Tenants",
+          "type": "semantic_model.measure",
+          "data_type": "Int64",
+          "description": null,
+          "children": []
+        }
+      ]
+    },
+    {
+      "id": "dim_user",
+      "is_selected": true,
+      "display_name": "dim_user",
+      "type": "semantic_model.table",
+      "description": null,
+      "children": [
+        {
+          "id": "dim_user.tenant_id",
+          "is_selected": true,
+          "display_name": "tenant_id",
+          "type": "semantic_model.column",
+          "data_type": "String",
+          "description": null,
+          "children": []
+        },
+        {
+          "id": "dim_user.user_key",
+          "is_selected": true,
+          "display_name": "user_key",
+          "type": "semantic_model.column",
+          "data_type": "String",
+          "description": null,
+          "children": []
+        },
+        {
+          "id": "dim_user.first_seen_date",
+          "is_selected": true,
+          "display_name": "first_seen_date",
+          "type": "semantic_model.column",
+          "data_type": "DateTime",
+          "description": null,
+          "children": []
+        },
+        {
+          "id": "dim_user.last_seen_date",
+          "is_selected": true,
+          "display_name": "last_seen_date",
+          "type": "semantic_model.column",
+          "data_type": "DateTime",
+          "description": null,
+          "children": []
+        },
+        {
+          "id": "dim_user.event_count",
+          "is_selected": true,
+          "display_name": "event_count",
+          "type": "semantic_model.column",
+          "data_type": "Int64",
+          "description": null,
+          "children": []
+        }
+      ]
+    },
+    {
+      "id": "dim_feature",
+      "is_selected": true,
+      "display_name": "dim_feature",
+      "type": "semantic_model.table",
+      "description": null,
+      "children": [
+        {
+          "id": "dim_feature.feature_id",
+          "is_selected": true,
+          "display_name": "feature_id",
+          "type": "semantic_model.column",
+          "data_type": "String",
+          "description": null,
+          "children": []
+        },
+        {
+          "id": "dim_feature.feature_name",
+          "is_selected": true,
+          "display_name": "feature_name",
+          "type": "semantic_model.column",
+          "data_type": "String",
+          "description": null,
+          "children": []
+        },
+        {
+          "id": "dim_feature.feature_category",
+          "is_selected": true,
+          "display_name": "feature_category",
+          "type": "semantic_model.column",
+          "data_type": "String",
+          "description": null,
+          "children": []
+        }
+      ]
+    },
+    {
+      "id": "dim_tenant",
+      "is_selected": true,
+      "display_name": "dim_tenant",
+      "type": "semantic_model.table",
+      "description": null,
+      "children": [
+        {
+          "id": "dim_tenant.tenant_id",
+          "is_selected": true,
+          "display_name": "tenant_id",
+          "type": "semantic_model.column",
+          "data_type": "String",
+          "description": null,
+          "children": []
+        }
+      ]
+    },
+    {
+      "id": "dim_date",
+      "is_selected": true,
+      "display_name": "dim_date",
+      "type": "semantic_model.table",
+      "description": null,
+      "children": [
+        {
+          "id": "dim_date.date",
+          "is_selected": true,
+          "display_name": "date",
+          "type": "semantic_model.column",
+          "data_type": "DateTime",
+          "description": null,
+          "children": []
+        },
+        {
+          "id": "dim_date.year",
+          "is_selected": true,
+          "display_name": "year",
+          "type": "semantic_model.column",
+          "data_type": "Int64",
+          "description": null,
+          "children": []
+        },
+        {
+          "id": "dim_date.quarter",
+          "is_selected": true,
+          "display_name": "quarter",
+          "type": "semantic_model.column",
+          "data_type": "Int64",
+          "description": null,
+          "children": []
+        },
+        {
+          "id": "dim_date.month",
+          "is_selected": true,
+          "display_name": "month",
+          "type": "semantic_model.column",
+          "data_type": "Int64",
+          "description": null,
+          "children": []
+        },
+        {
+          "id": "dim_date.month_name",
+          "is_selected": true,
+          "display_name": "month_name",
+          "type": "semantic_model.column",
+          "data_type": "String",
+          "description": null,
+          "children": []
+        },
+        {
+          "id": "dim_date.day",
+          "is_selected": true,
+          "display_name": "day",
+          "type": "semantic_model.column",
+          "data_type": "Int64",
+          "description": null,
+          "children": []
+        },
+        {
+          "id": "dim_date.day_of_week",
+          "is_selected": true,
+          "display_name": "day_of_week",
+          "type": "semantic_model.column",
+          "data_type": "Int64",
+          "description": null,
+          "children": []
+        },
+        {
+          "id": "dim_date.day_name",
+          "is_selected": true,
+          "display_name": "day_name",
+          "type": "semantic_model.column",
+          "data_type": "String",
+          "description": null,
+          "children": []
+        },
+        {
+          "id": "dim_date.iso_week",
+          "is_selected": true,
+          "display_name": "iso_week",
+          "type": "semantic_model.column",
+          "data_type": "Int64",
+          "description": null,
+          "children": []
+        },
+        {
+          "id": "dim_date.is_weekend",
+          "is_selected": true,
+          "display_name": "is_weekend",
+          "type": "semantic_model.column",
+          "data_type": "Boolean",
+          "description": null,
+          "children": []
+        }
+      ]
+    }
+  ]
+}
