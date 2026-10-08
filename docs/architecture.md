@@ -179,7 +179,9 @@ Current tables (all in the `product` schema of schema-enabled lakehouses):
   direct shares are documented in [semantic model](semantic-model.md).
 - Workspaces are provisioned locally by an administrator with
   `python tools/provision_environment.py` (plan by default, `--apply` to
-  change). It is idempotent and never deletes workspaces or role assignments.
+  change). It is idempotent and never deletes workspaces, connections or role
+  assignments. It also grants the deployment service principal `User` on the
+  Gold connection so each deployment can rebind the semantic models.
 - All environments of the lab share one F2 capacity. The Data/Analytics split
   allows separate capacities in production without moving items.
 - Workspace folders are not published (`disable_workspace_folder_publish`).

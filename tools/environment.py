@@ -12,3 +12,10 @@ def workspace_name(layer, environment):
 
 def workspace_names(environment):
     return {layer: workspace_name(layer, environment) for layer in LAYERS}
+
+
+def gold_connection_name(environment):
+    """Connection the Analytics semantic models use to read Gold."""
+    if environment not in ENVIRONMENTS:
+        raise ValueError("Unknown environment")
+    return f"conn-unily-analytics-{environment}-gold-onelake"

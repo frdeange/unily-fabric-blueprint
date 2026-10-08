@@ -47,8 +47,8 @@ production runtime identity are not implemented yet.
 - `.github/ISSUE_TEMPLATE/`: structured issue forms.
 - `docs/architecture.md`: target workspaces (Data, Analytics, Vault per
   environment), access model and the mandatory naming convention.
-- `docs/semantic-model.md`: semantic model access pattern, RLS roles and the
-  post-deployment runbook.
+- `docs/semantic-model.md`: semantic model access pattern, RLS roles, the
+  automatic rebind and refresh, and the post-deployment runbook.
 
 Items follow `fabric/<domain>/<type>/<Name>.<FabricType>/`. Keep each item's
 definition and `.platform` together. Semantic models use TMDL under
@@ -224,7 +224,9 @@ pipeline resolve to the deployed item IDs. Finally it publishes
 lakehouse. It uses
 `fabric-cicd` 1.3.0 with Azure CLI OIDC credentials. It does not call orphan
 cleanup, create workspace folders, deploy agents, execute notebooks or
-refresh data or models. Connection binding, refresh, RLS role members and sharing are
+refresh data. After readback it takes over each semantic model, rebinds it to
+the Gold connection and runs one Direct Lake framing refresh, failing the run
+unless the refresh completes. RLS role members and sharing are
 separately approved post-deployment steps ([semantic model](docs/semantic-model.md)). Lakehouses are created schema-enabled and empty; existing item IDs
 are verified after update.
 The deployment is not atomic; a failed publication may require a reviewed retry.

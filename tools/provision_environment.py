@@ -1,17 +1,20 @@
 """Idempotently create the Data, Analytics and Vault workspaces of one environment.
 
 Run locally by a Fabric administrator. Real IDs are arguments, never repository content.
-Creates or corrects nothing beyond: missing workspaces, capacity assignment and the
-deployment identity's Contributor role. It never deletes workspaces or role assignments.
+Creates or corrects nothing beyond: missing workspaces, capacity assignment, the
+deployment identity's Contributor role and its User role on the Gold connection (needed
+to rebind the semantic models after each deployment). The connection itself is created
+manually. It never deletes workspaces, connections or role assignments.
 """
 
 import argparse
 import uuid
 
-from environment import ENVIRONMENTS, workspace_names
+from environment import ENVIRONMENTS, gold_connection_name, workspace_names
 from fabric_api import call, find_workspace, list_all
 
 DEPLOYER_ROLE = "Contributor"
+CONNECTION_ROLE = "User"
 
 
 def plan_workspace(existing, capacity_id):
@@ -54,7 +57,25 @@ def provision(credential, environment, capacity_id, deployer_id, apply):
                 })
             actions.extend(role_actions)
         report[name] = actions or ["unchanged"]
+    name = gold_connection_name(environment)
+    report[name] = grant_connection(credential, name, deployer_id, apply)
     return report
+
+
+def grant_connection(credential, name, deployer_id, apply):
+    """Any existing role (User, UserWithReshare, Owner) is enough and is never changed."""
+    connections = [c for c in list_all(credential, "connections") if c.get("displayName") == name]
+    if len(connections) > 1:
+        raise ValueError(f"Ambiguous connection name: {name}")
+    if not connections:
+        return ["missing: create it manually, then rerun"]
+    path = f"connections/{connections[0]['id']}/roleAssignments"
+    if any(a["principal"]["id"] == deployer_id for a in list_all(credential, path)):
+        return ["unchanged"]
+    if apply:
+        call(credential, path, {"principal": {"id": deployer_id, "type": "ServicePrincipal"},
+                                "role": CONNECTION_ROLE})
+    return ["grant_deployer_user"]
 
 
 def main():
