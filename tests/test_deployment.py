@@ -33,8 +33,11 @@ class FakeFabric:
         self.definitions = {}
         self.schema_enabled = schema_enabled
         self.published = []
+        self.gold_id = str(uuid.uuid4())
+        data = find_workspace(self.workspaces, workspace_name("data", "dev"))["id"]
         self.connection = {"displayName": gold_connection_name("dev"), "id": str(uuid.uuid4()),
-                           "connectivityType": "ShareableCloud", "connectionDetails": None}
+                           "connectivityType": "ShareableCloud", "connectionDetails": {
+                               "type": "AzureDataLakeStorage", "path": f"{ONELAKE}/{data}/{self.gold_id}/"}}
         self.bindings, self.takeovers, self.refreshes = {}, [], []
         self.bind_persists, self.refresh_error = True, None
 
@@ -46,11 +49,7 @@ class FakeFabric:
         if path == "workspaces":
             return self.workspaces
         if path == "connections":
-            if self.connection is None:
-                return []
-            model = next(i for items in self.items.values() for i in items if i["type"] == "SemanticModel")
-            return [{**self.connection, "connectionDetails": self.connection["connectionDetails"]
-                     or self.source(model["id"])}]
+            return [self.connection] if self.connection else []
         if path.endswith("/connections"):
             model = path.split("/")[3]
             return [{"connectionDetails": self.source(model), "id": self.bindings.get(model)}]
@@ -87,12 +86,15 @@ class FakeFabric:
     def publish(self, workspace, directory, kinds):
         self.published.append((workspace, tuple(kinds)))
         logical = {}
+        created = set()
         for folder in directory.iterdir():
             name, kind = folder.name.rsplit(".", 1)
             assert kind in kinds
             existing = find_item(self.items[workspace], name, kind)
             if not existing:
-                existing = {"displayName": name, "type": kind, "id": str(uuid.uuid4())}
+                identity = self.gold_id if (name, kind) == ("Gold", "Lakehouse") else str(uuid.uuid4())
+                existing = {"displayName": name, "type": kind, "id": identity}
+                created.add(identity)
                 self.items[workspace].append(existing)
                 if kind == "Lakehouse":
                     self.items[workspace].append({"displayName": name, "type": "SQLEndpoint", "id": str(uuid.uuid4())})
@@ -104,6 +106,8 @@ class FakeFabric:
             name, kind = folder.name.rsplit(".", 1)
             target = find_item(self.items[workspace], name, kind)["id"]
             if kind == "SemanticModel":
+                if target not in created and target not in self.bindings:
+                    raise RuntimeError("DMTS_MonikerWithUnboundDataSources")
                 # Updating a model definition drops its connection binding.
                 self.bindings.pop(target, None)
                 self.definitions[target] = {f: c.encode() for f, c in read_parts(folder).items() if f != ".platform"}
@@ -326,6 +330,29 @@ class DeploymentTests(unittest.TestCase):
             self.assertEqual(fabric.bindings, {model: fabric.connection["id"]})
             self.assertEqual(fabric.takeovers, [model] * run)
             self.assertEqual(fabric.refreshes, [(analytics, model)] * run)
+
+    def test_unbound_model_is_bound_before_publication(self):
+        fabric = FakeFabric()
+        fabric.run()
+        model = fabric.model()
+        # A previous run dropped the binding and failed before rebinding it.
+        fabric.bindings.clear()
+        fabric.takeovers.clear()
+        fabric.run()
+        self.assertEqual(fabric.bindings, {model: fabric.connection["id"]})
+        self.assertEqual(fabric.takeovers, [model, model])
+        self.assertEqual(len(fabric.refreshes), 2)
+
+    def test_unbound_model_with_other_source_fails_before_publication(self):
+        fabric = FakeFabric()
+        fabric.run()
+        fabric.bindings.clear()
+        fabric.connection["connectionDetails"] = {"type": "AzureDataLakeStorage", "path": "https://example.invalid/"}
+        published = len(fabric.published)
+        with self.assertRaisesRegex(RuntimeError, "does not match"):
+            fabric.run()
+        analytics = fabric.workspace("analytics")
+        self.assertFalse([w for w, _ in fabric.published[published:] if w == analytics])
 
     def test_binding_failures_stop_before_refresh(self):
         cases = {

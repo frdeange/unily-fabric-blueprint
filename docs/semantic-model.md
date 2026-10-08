@@ -131,6 +131,13 @@ Any mismatch, missing binding or failed refresh fails the deployment. The
 deployment service principal needs the `User` role on the connection, which
 provisioning grants. Role members and sharing are never set by the deployment.
 
+Fabric also refuses to update an existing model whose data source is unbound
+(`DMTS_MonikerWithUnboundDataSources`), which happens when an earlier run
+failed after publication. So before publishing the model stage, the deployment
+resolves the connection and applies steps 1 and 2 to every existing model that
+is unbound; bound and new models are left as they are. The deployment therefore
+recovers by itself from a run that stopped after losing the binding.
+
 ## Steps after the first deployment
 
 Done once per environment by a workspace admin, signed in with `az login`.
