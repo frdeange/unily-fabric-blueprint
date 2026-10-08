@@ -1,0 +1,24 @@
+model Model
+	culture: en-US
+	collation: Latin1_General_100_BIN2_UTF8
+	defaultPowerBIDataSourceVersion: powerBI_V3
+	sourceQueryCulture: en-US
+	dataAccessOptions
+		legacyRedirects
+		returnErrorValuesAsNull
+
+annotation __PBI_TimeIntelligenceEnabled = 0
+
+annotation PBI_QueryOrder = ["DatabaseQuery"]
+
+annotation PBI_ProTooling = ["WebModelingEdit"]
+
+ref table gold_fact_tickets
+ref table gold_dim_customer
+ref table gold_dim_agent_group
+
+ref role SupportTier1Only
+ref role SupportTier2Only
+ref role SupportPlatformOnly
+ref role SupportTier3EngOnly
+

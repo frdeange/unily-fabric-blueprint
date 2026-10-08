@@ -1,0 +1,8 @@
+relationship d2500545-b691-4a0b-8525-2792803b11be
+	fromColumn: gold_fact_tickets.customer_key
+	toColumn: gold_dim_customer.customer_key
+
+relationship 7807daec-7307-431a-8836-850139246742
+	fromColumn: gold_fact_tickets.agent_group_key
+	toColumn: gold_dim_agent_group.agent_group_key
+

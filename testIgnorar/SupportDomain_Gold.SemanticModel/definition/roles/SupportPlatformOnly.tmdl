@@ -1,0 +1,5 @@
+role SupportPlatformOnly
+	modelPermission: read
+
+	tablePermission gold_dim_agent_group = [agent_group] = "Support-Platform"
+

@@ -1,0 +1,5 @@
+role SupportTier3EngOnly
+	modelPermission: read
+
+	tablePermission gold_dim_agent_group = [agent_group] = "Support-Tier3-Eng"
+

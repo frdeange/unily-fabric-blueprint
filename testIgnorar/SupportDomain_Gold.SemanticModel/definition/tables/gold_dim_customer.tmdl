@@ -1,0 +1,67 @@
+table gold_dim_customer
+	lineageTag: bb1f5b47-4f49-4745-acc1-898bce4988c3
+	sourceLineageTag: [dbo].[gold_dim_customer]
+
+	column customer_email_hash
+		dataType: string
+		lineageTag: 83b2e417-32b2-4846-9bf1-73d3e6c0deb8
+		sourceLineageTag: customer_email_hash
+		summarizeBy: none
+		sourceColumn: customer_email_hash
+
+		annotation SummarizationSetBy = Automatic
+
+	column customer_display_name
+		dataType: string
+		lineageTag: 8be3e19f-270a-4535-a286-b89a90c25454
+		sourceLineageTag: customer_display_name
+		summarizeBy: none
+		sourceColumn: customer_display_name
+
+		annotation SummarizationSetBy = Automatic
+
+	column customer_email
+		dataType: string
+		lineageTag: 2b279e91-a3be-480e-a9b5-709a235fd6e7
+		sourceLineageTag: customer_email
+		summarizeBy: none
+		sourceColumn: customer_email
+
+		annotation SummarizationSetBy = Automatic
+
+	column customer_key
+		dataType: int64
+		lineageTag: 8ee180b1-a35b-48e6-94da-f858eef9497e
+		sourceLineageTag: customer_key
+		summarizeBy: none
+		sourceColumn: customer_key
+
+		annotation SummarizationSetBy = Automatic
+
+	column tenant_id
+		dataType: string
+		lineageTag: 38b6615f-5126-593b-aaf5-c6726cc8e348
+		sourceLineageTag: tenant_id
+		summarizeBy: none
+		sourceColumn: tenant_id
+
+		annotation SummarizationSetBy = Automatic
+
+	column tenant_customer_key
+		dataType: string
+		lineageTag: 9e03b362-9888-5c0c-9d77-c74a31e1353d
+		sourceLineageTag: tenant_customer_key
+		summarizeBy: none
+		sourceColumn: tenant_customer_key
+
+		annotation SummarizationSetBy = Automatic
+
+	partition gold_dim_customer = entity
+		mode: directLake
+		source
+			entityName: gold_dim_customer
+			schemaName: dbo
+			expressionSource: DatabaseQuery
+
+	annotation PBI_ResultType = Table
+

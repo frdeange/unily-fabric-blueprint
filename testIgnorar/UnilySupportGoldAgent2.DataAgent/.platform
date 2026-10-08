@@ -1,0 +1,11 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/fabric/gitIntegration/platformProperties/2.0.0/schema.json",
+  "metadata": {
+    "type": "DataAgent",
+    "displayName": "UnilySupportGoldAgent2"
+  },
+  "config": {
+    "version": "2.0",
+    "logicalId": "c22ee63c-b853-a0ca-4d22-dbe1482ba65a"
+  }
+}

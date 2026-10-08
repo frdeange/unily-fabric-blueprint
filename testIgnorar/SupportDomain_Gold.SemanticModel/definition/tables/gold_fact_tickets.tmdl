@@ -1,0 +1,132 @@
+table gold_fact_tickets
+	lineageTag: a837429b-27ea-4c8a-8650-5eee34abbde6
+	sourceLineageTag: [dbo].[gold_fact_tickets]
+
+	column ticket_id
+		dataType: string
+		lineageTag: bf2e16c6-4ca6-45fb-bc0e-91c98d725e43
+		sourceLineageTag: ticket_id
+		summarizeBy: none
+		sourceColumn: ticket_id
+
+		annotation SummarizationSetBy = Automatic
+
+	column customer_key
+		dataType: int64
+		lineageTag: 01653adb-263d-4836-adf2-b4d8b6415659
+		sourceLineageTag: customer_key
+		summarizeBy: none
+		sourceColumn: customer_key
+
+		annotation SummarizationSetBy = Automatic
+
+	column agent_group_key
+		dataType: int64
+		lineageTag: 248a0c9b-8819-47ea-8ea8-c244c8b8380b
+		sourceLineageTag: agent_group_key
+		summarizeBy: none
+		sourceColumn: agent_group_key
+
+		annotation SummarizationSetBy = Automatic
+
+	column opened_at
+		dataType: dateTime
+		formatString: General Date
+		lineageTag: a264d291-c9ca-40fb-8e3f-0fb16abde9cc
+		sourceLineageTag: opened_at
+		summarizeBy: none
+		sourceColumn: opened_at
+
+		annotation SummarizationSetBy = Automatic
+
+	column closed_at
+		dataType: dateTime
+		formatString: General Date
+		lineageTag: 8f45b485-2efe-4b78-bb82-b5681843245b
+		sourceLineageTag: closed_at
+		summarizeBy: none
+		sourceColumn: closed_at
+
+		annotation SummarizationSetBy = Automatic
+
+	column priority
+		dataType: string
+		lineageTag: 23a8bc68-b2ee-4162-91ca-eae2fea3a4da
+		sourceLineageTag: priority
+		summarizeBy: none
+		sourceColumn: priority
+
+		annotation SummarizationSetBy = Automatic
+
+	column category
+		dataType: string
+		lineageTag: f13d7d3d-1adb-4b8c-a6a7-4da935069bfd
+		sourceLineageTag: category
+		summarizeBy: none
+		sourceColumn: category
+
+		annotation SummarizationSetBy = Automatic
+
+	column sla_hours
+		dataType: int64
+		lineageTag: 4bba030d-9743-4b28-a788-80d78e3a0320
+		sourceLineageTag: sla_hours
+		summarizeBy: none
+		sourceColumn: sla_hours
+
+		annotation SummarizationSetBy = Automatic
+
+	column mttr_hours
+		dataType: double
+		lineageTag: 9799da1b-1478-45e2-a23b-a775fb290ead
+		sourceLineageTag: mttr_hours
+		summarizeBy: none
+		sourceColumn: mttr_hours
+
+		annotation SummarizationSetBy = Automatic
+
+	column status
+		dataType: string
+		lineageTag: b85827f7-ec13-4193-9058-76e6be93e63c
+		sourceLineageTag: status
+		summarizeBy: none
+		sourceColumn: status
+
+		annotation SummarizationSetBy = Automatic
+
+	column sla_breached
+		dataType: boolean
+		lineageTag: d0a9ebea-954f-48c1-bdc7-d5aa162c8e32
+		sourceLineageTag: sla_breached
+		summarizeBy: none
+		sourceColumn: sla_breached
+
+		annotation SummarizationSetBy = Automatic
+
+	column tenant_id
+		dataType: string
+		lineageTag: 0b4019f4-12e8-5922-8d7c-9d5c8c7f0a86
+		sourceLineageTag: tenant_id
+		summarizeBy: none
+		sourceColumn: tenant_id
+
+		annotation SummarizationSetBy = Automatic
+
+	column source_system
+		dataType: string
+		lineageTag: c83f2c46-b2da-5fd2-a0d3-eee5c4ea4f83
+		sourceLineageTag: source_system
+		summarizeBy: none
+		sourceColumn: source_system
+
+		annotation SummarizationSetBy = Automatic
+
+	partition gold_fact_tickets = entity
+		mode: directLake
+		source
+			entityName: gold_fact_tickets
+			schemaName: dbo
+			expressionSource: DatabaseQuery
+
+	annotation PBI_ResultType = Table
+

@@ -1,0 +1,31 @@
+table gold_dim_agent_group
+	lineageTag: de25fc7a-2f11-416a-a9cf-f389da60862b
+	sourceLineageTag: [dbo].[gold_dim_agent_group]
+
+	column agent_group
+		dataType: string
+		lineageTag: eddf3c6c-7b51-4d82-bb5c-b10237f55ee9
+		sourceLineageTag: agent_group
+		summarizeBy: none
+		sourceColumn: agent_group
+
+		annotation SummarizationSetBy = Automatic
+
+	column agent_group_key
+		dataType: int64
+		lineageTag: 63826708-c5bd-4529-814e-7471c9c86e1c
+		sourceLineageTag: agent_group_key
+		summarizeBy: none
+		sourceColumn: agent_group_key
+
+		annotation SummarizationSetBy = Automatic
+
+	partition gold_dim_agent_group = entity
+		mode: directLake
+		source
+			entityName: gold_dim_agent_group
+			schemaName: dbo
+			expressionSource: DatabaseQuery
+
+	annotation PBI_ResultType = Table
+

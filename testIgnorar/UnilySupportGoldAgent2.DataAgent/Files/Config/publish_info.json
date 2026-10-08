@@ -1,0 +1,4 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/dataAgent/definition/publishInfo/1.0.0/schema.json",
+  "description": "This agent answers questions about Unily support tickets using the Gold layer (gold_fact_tickets, gold_dim_customer, gold_dim_agent_group). Created via portal UI for lab validation."
+}
