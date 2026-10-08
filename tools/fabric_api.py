@@ -1,4 +1,8 @@
-"""Minimal Fabric REST client: canonical host only, long-running operations, paging."""
+"""Minimal Fabric REST client: canonical hosts only, long-running operations, paging.
+
+The Power BI API is used only for what Fabric does not expose yet: semantic model
+take-over and refresh.
+"""
 
 import json
 import time
@@ -9,6 +13,10 @@ from urllib.request import Request, urlopen
 
 API = "https://api.fabric.microsoft.com/v1"
 SCOPE = "https://api.fabric.microsoft.com/.default"
+POWERBI_API = "https://api.powerbi.com/v1.0/myorg"
+POWERBI_SCOPE = "https://analysis.windows.net/powerbi/api/.default"
+REFRESH_DONE = "Completed"
+REFRESH_FAILED = ("Failed", "Cancelled", "Disabled", "TimedOut")
 
 
 def operation_endpoint(headers):
@@ -23,28 +31,57 @@ def operation_endpoint(headers):
     return f"{API}/operations/{uuid.UUID(operation_id)}"
 
 
-def call(credential, path, body=None, method=None):
-    url = path if path.startswith("https://") else f"{API}/{path}"
-    if not url.startswith(API + "/"):
+def send(credential, url, base, scope, body=None, method=None):
+    """Return status, headers and decoded JSON of one request to an allowed origin."""
+    if not url.startswith(base + "/"):
         raise ValueError("Refusing an unexpected API origin")
     method = method or ("GET" if body is None else "POST")
-    headers = {"Authorization": "Bearer " + credential.get_token(SCOPE).token}
+    headers = {"Authorization": "Bearer " + credential.get_token(scope).token}
     payload = None if body is None else json.dumps(body).encode()
     request = Request(url, data=payload, headers=headers, method=method)
     if body is not None:
         request.add_header("Content-Type", "application/json")
     try:
         with urlopen(request, timeout=90) as response:
-            if response.status == 202 and (
-                response.headers.get("x-ms-operation-id") or response.headers.get("Location")
-            ):
-                location = operation_endpoint(response.headers)
-                delay = int(response.headers.get("Retry-After", "5"))
-                return wait_operation(credential, location, delay)
             content = response.read()
-            return json.loads(content) if content else {}
+            return response.status, response.headers, json.loads(content) if content else {}
     except HTTPError as error:
-        raise RuntimeError(f"Fabric {method} {urlparse(url).path.split('/')[-1]} failed with HTTP {error.code}") from None
+        service = "Power BI" if base == POWERBI_API else "Fabric"
+        raise RuntimeError(f"{service} {method} {urlparse(url).path.split('/')[-1]} "
+                           f"failed with HTTP {error.code}") from None
+
+
+def call(credential, path, body=None, method=None):
+    url = path if path.startswith("https://") else f"{API}/{path}"
+    status, headers, content = send(credential, url, API, SCOPE, body, method)
+    if status == 202 and (headers.get("x-ms-operation-id") or headers.get("Location")):
+        location = operation_endpoint(headers)
+        return wait_operation(credential, location, int(headers.get("Retry-After", "5")))
+    return content
+
+
+def powerbi(credential, path, body=None):
+    """Call the Power BI API; return status, headers and JSON."""
+    return send(credential, f"{POWERBI_API}/{path}", POWERBI_API, POWERBI_SCOPE, body)
+
+
+def refresh_model(credential, workspace, model, timeout=900):
+    """Run one full (Direct Lake framing) refresh and wait until it completes."""
+    base = f"groups/{uuid.UUID(workspace)}/datasets/{uuid.UUID(model)}/refreshes"
+    status, headers, _ = powerbi(credential, base, {"type": "full", "retryCount": 0})
+    if status != 202 or not headers.get("Location"):
+        raise RuntimeError("Semantic model refresh was not accepted")
+    # Follow the refresh ID through the canonical API, never a supplied host.
+    refresh = uuid.UUID(urlparse(headers["Location"]).path.rstrip("/").rsplit("/", 1)[-1])
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        time.sleep(min(max(int(headers.get("Retry-After", "10")), 1), 30))
+        state = powerbi(credential, f"{base}/{refresh}")[2].get("status")
+        if state == REFRESH_DONE:
+            return
+        if state in REFRESH_FAILED:
+            raise RuntimeError(f"Semantic model refresh ended with status {state}")
+    raise TimeoutError("Semantic model refresh timed out")
 
 
 def wait_operation(credential, location, delay):

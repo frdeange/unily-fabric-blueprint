@@ -11,8 +11,9 @@ from unittest.mock import Mock, patch
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "tools"))
 from deploy_environment import deploy, find_item, verify_inventory
-from environment import workspace_name, workspace_names
-from fabric_api import find_workspace, operation_endpoint, wait_operation
+from environment import gold_connection_name, workspace_name, workspace_names
+from fabric_api import (POWERBI_API, POWERBI_SCOPE, find_workspace, operation_endpoint, refresh_model, send,
+                        wait_operation)
 from prepare_deployment import (DATA_WORKSPACE_PLACEHOLDER, DEFAULT_WORKSPACE, GOLD_PLACEHOLDER, ID_FIELDS, ITEMS,
                                 MODEL_NAME, ONELAKE, check_model, check_scope, item_folder, load_settings,
                                 model_summary, prepare, read_parts, runtime_values, variables_definition)
@@ -31,15 +32,50 @@ class FakeFabric:
         self.definitions = {}
         self.schema_enabled = schema_enabled
         self.published = []
+        self.connection = {"displayName": gold_connection_name("dev"), "id": str(uuid.uuid4()),
+                           "connectivityType": "ShareableCloud", "connectionDetails": None}
+        self.bindings, self.takeovers, self.refreshes = {}, [], []
+        self.bind_persists, self.refresh_error = True, None
+
+    def source(self, model):
+        summary = model_summary({f: c.decode() for f, c in self.definitions[model].items()})
+        return {"type": "AzureDataLakeStorage", "path": summary["sources"][0] + "/"}
 
     def list_all(self, credential, path):
         if path == "workspaces":
             return self.workspaces
+        if path == "connections":
+            if self.connection is None:
+                return []
+            model = next(i for items in self.items.values() for i in items if i["type"] == "SemanticModel")
+            return [{**self.connection, "connectionDetails": self.connection["connectionDetails"]
+                     or self.source(model["id"])}]
+        if path.endswith("/connections"):
+            model = path.split("/")[3]
+            return [{"connectionDetails": self.source(model), "id": self.bindings.get(model)}]
         return list(self.items[path.split("/")[1]])
+
+    def powerbi(self, credential, path, body=None):
+        assert path.endswith("/Default.TakeOver") and body == {}
+        self.takeovers.append(path.split("/")[3])
+        return 200, {}, {}
+
+    def refresh_model(self, credential, workspace, model):
+        assert self.bindings.get(model) == self.connection["id"]
+        if self.refresh_error:
+            raise RuntimeError(self.refresh_error)
+        self.refreshes.append((workspace, model))
 
     def call(self, credential, path, body=None, method=None):
         parts = path.split("/")
         item = parts[3]
+        if path.endswith("/bindConnection"):
+            binding = body["connectionBinding"]
+            assert item in self.takeovers and binding["connectivityType"] == "ShareableCloud"
+            assert binding["connectionDetails"] == self.source(item)
+            if self.bind_persists:
+                self.bindings[item] = binding["id"]
+            return {}
         if path.endswith("getDefinition") or "getDefinition?" in path:
             return {"definition": {"parts": [{"path": file, "payload": base64.b64encode(content).decode()}
                                              for file, content in self.definitions[item].items()]}}
@@ -65,6 +101,8 @@ class FakeFabric:
             name, kind = folder.name.rsplit(".", 1)
             target = find_item(self.items[workspace], name, kind)["id"]
             if kind == "SemanticModel":
+                # Updating a model definition drops its connection binding.
+                self.bindings.pop(target, None)
                 self.definitions[target] = {f: c.encode() for f, c in read_parts(folder).items() if f != ".platform"}
                 continue
             file = {"Notebook": "notebook-content.ipynb", "VariableLibrary": "variables.json",
@@ -78,8 +116,13 @@ class FakeFabric:
                 self.definitions[target] = {file: content.encode()}
 
     def run(self):
-        with patch("deploy_environment.list_all", self.list_all), patch("deploy_environment.call", self.call):
+        with patch("deploy_environment.list_all", self.list_all), patch("deploy_environment.call", self.call), \
+                patch("deploy_environment.powerbi", self.powerbi), \
+                patch("deploy_environment.refresh_model", self.refresh_model):
             return deploy(Mock(), "dev", self.publish)
+
+    def model(self):
+        return find_item(self.items[self.workspace("analytics")], MODEL_NAME, "SemanticModel")["id"]
 
     def workspace(self, layer):
         return find_workspace(self.workspaces, workspace_name(layer, "dev"))["id"]
@@ -89,6 +132,9 @@ class NamingTests(unittest.TestCase):
     def test_workspace_names_follow_convention(self):
         self.assertEqual(workspace_names("dev"), {
             "data": "Unily-Data-Dev", "analytics": "Unily-Analytics-Dev", "vault": "Unily-Vault-Dev"})
+        self.assertEqual(gold_connection_name("test"), "conn-unily-analytics-test-gold-onelake")
+        with self.assertRaises(ValueError):
+            gold_connection_name("qa")
         with self.assertRaises(ValueError):
             workspace_name("gold", "dev")
 
@@ -104,6 +150,31 @@ class FabricApiTests(unittest.TestCase):
             operation_endpoint({"x-ms-operation-id": "invalid"})
         with self.assertRaises(ValueError):
             operation_endpoint({"Location": "https://example.invalid/arbitrary"})
+
+    @patch("fabric_api.time.sleep")
+    @patch("fabric_api.powerbi")
+    def test_model_refresh_polls_the_canonical_refresh(self, read, sleep):
+        workspace, model, refresh = (str(uuid.uuid4()) for _ in range(3))
+        base = f"groups/{workspace}/datasets/{model}/refreshes"
+        accepted = (202, {"Location": f"https://regional.example.invalid/v1.0/myorg/{base}/{refresh}"}, {})
+        read.side_effect = [accepted, (200, {}, {"status": "Unknown"}), (200, {}, {"status": "Completed"})]
+        refresh_model(Mock(), workspace, model)
+        self.assertEqual(read.call_args_list[0].args[1:], (base, {"type": "full", "retryCount": 0}))
+        self.assertEqual(read.call_args.args[1], f"{base}/{refresh}")
+        read.side_effect = [accepted, (200, {}, {"status": "Failed"})]
+        with self.assertRaisesRegex(RuntimeError, "status Failed"):
+            refresh_model(Mock(), workspace, model)
+        read.side_effect = [(200, {}, {})]
+        with self.assertRaisesRegex(RuntimeError, "not accepted"):
+            refresh_model(Mock(), workspace, model)
+        read.side_effect = [(202, {"Location": "https://example.invalid/arbitrary"}, {})]
+        with self.assertRaises(ValueError):
+            refresh_model(Mock(), workspace, model)
+
+    def test_power_bi_calls_stay_on_the_canonical_api(self):
+        for url in ("https://api.powerbi.com.example.invalid/v1.0/myorg/x", "https://api.fabric.microsoft.com/v1/x"):
+            with self.assertRaisesRegex(ValueError, "unexpected API origin"):
+                send(Mock(), url, POWERBI_API, POWERBI_SCOPE)
 
     @patch("fabric_api.time.sleep")
     @patch("fabric_api.call")
@@ -234,6 +305,36 @@ class DeploymentTests(unittest.TestCase):
         before = {w: list(items) for w, items in fabric.items.items()}
         fabric.run()
         self.assertEqual(fabric.items, before)
+
+    def test_every_deployment_rebinds_and_reframes_the_model(self):
+        fabric = FakeFabric()
+        for run in (1, 2):
+            fabric.run()
+            model, analytics = fabric.model(), fabric.workspace("analytics")
+            self.assertEqual(fabric.bindings, {model: fabric.connection["id"]})
+            self.assertEqual(fabric.takeovers, [model] * run)
+            self.assertEqual(fabric.refreshes, [(analytics, model)] * run)
+
+    def test_binding_failures_stop_before_refresh(self):
+        cases = {
+            "not found or ambiguous": lambda fabric: setattr(fabric, "connection", None),
+            "does not match": lambda fabric: fabric.connection.update(
+                connectionDetails={"type": "AzureDataLakeStorage", "path": "https://example.invalid/"}),
+            "did not persist": lambda fabric: setattr(fabric, "bind_persists", False),
+        }
+        for message, change in cases.items():
+            with self.subTest(message=message):
+                fabric = FakeFabric()
+                change(fabric)
+                with self.assertRaisesRegex(RuntimeError, message):
+                    fabric.run()
+                self.assertEqual(fabric.refreshes, [])
+
+    def test_failed_refresh_fails_the_deployment(self):
+        fabric = FakeFabric()
+        fabric.refresh_error = "Semantic model refresh ended with status Failed"
+        with self.assertRaisesRegex(RuntimeError, "status Failed"):
+            fabric.run()
 
     def test_missing_workspace_fails_before_publishing(self):
         fabric = FakeFabric()

@@ -111,8 +111,25 @@ After publication, readback compares tables, columns, measures, partitions,
 relationships, roles (filters and hidden objects) and the source with the
 staged copy.
 
-Fabric drops role members and connection bindings from a definition, so the
-deployment never sets them and never refreshes the model.
+Fabric does not keep role members in a definition, and updating a definition
+drops its connection binding (observed in dev after #30). So after readback
+every deployment, as the deployment service principal and per model:
+
+1. **Takes over** the model, because only the owner can bind it
+   (Power BI REST `POST groups/{workspace}/datasets/{model}/Default.TakeOver`).
+2. **Rebinds Gold.** It resolves `conn-unily-analytics-<env>-gold-onelake` by
+   name (it must be a single `ShareableCloud` connection), checks that the
+   model's only data source reference has the same `connectionDetails` (type
+   and path), binds it (Fabric REST
+   `POST workspaces/{workspace}/semanticModels/{model}/bindConnection`) and
+   relists `GET workspaces/{workspace}/items/{model}/connections` to confirm.
+3. **Refreshes** once (Direct Lake framing, Power BI enhanced refresh
+   `POST groups/{workspace}/datasets/{model}/refreshes`) and polls the
+   refresh until `Completed`.
+
+Any mismatch, missing binding or failed refresh fails the deployment. The
+deployment service principal needs the `User` role on the connection, which
+provisioning grants. Role members and sharing are never set by the deployment.
 
 ## Steps after the first deployment
 
@@ -123,20 +140,20 @@ each run in the private deployment log.
 
 | Step | Method |
 | --- | --- |
-| 1. **Take over** the model, because only the owner can bind it (the deployment service principal owns the published model) | Power BI REST: `POST groups/{workspace}/datasets/{model}/Default.TakeOver` |
-| 2. **Bind the connection.** List the model's data source references, then bind the OneLake reference to `conn-unily-analytics-<env>-gold-onelake` (connectivity `ShareableCloud`), echoing `connectionDetails` exactly. Relist to confirm | Fabric REST: `GET workspaces/{workspace}/items/{model}/connections`, then `POST workspaces/{workspace}/semanticModels/{model}/bindConnection` |
-| 3. **Refresh** the model once and confirm that the refresh history reports `Completed` | Power BI REST: `POST`, then `GET groups/{workspace}/datasets/{model}/refreshes` |
-| 4. **Assign role members.** Add each group to its role as listed in the role table | **Portal only**: model, *Security*. There is no supported API for role membership |
-| 5. **Share the model** with the four consumer groups as `ReadExplore` (Read and Build, no reshare, no workspace access) | Power BI REST: `POST groups/{workspace}/datasets/{model}/users` |
-| 6. **Validate** the matrix below | DAX `executeQueries` signed in as each test user; T-SQL against the Gold SQL analytics endpoint must be denied |
+| 1. **Create the connection** `conn-unily-analytics-<env>-gold-onelake` (OneLake, Analytics workspace identity, `ShareableCloud`), then rerun provisioning with `--apply` so the deployment service principal gets `User` on it | Portal, then `python tools/provision_environment.py` |
+| 2. **Deploy.** The deployment takes over, binds and refreshes the model (see above) | **Deploy dev environment** workflow |
+| 3. **Assign role members.** Add each group to its role as listed in the role table | **Portal only**: model, *Security*. There is no supported API for role membership |
+| 4. **Share the model** with the four consumer groups as `ReadExplore` (Read and Build, no reshare, no workspace access) | Power BI REST: `POST groups/{workspace}/datasets/{model}/users` |
+| 5. **Validate** the matrix below | DAX `executeQueries` signed in as each test user; T-SQL against the Gold SQL analytics endpoint must be denied |
 
-Calls to the Fabric API carry the header
+Manual calls to the Fabric API carry the header
 `x-ms-fabric-skill: semantic-model-authoring`. The Fabric API uses the audience
 `https://api.fabric.microsoft.com`; the Power BI API uses
 `https://analysis.windows.net/powerbi/api`.
 
-A later redeployment updates the definition in place. Confirm that the
-binding and the role members survive; repeat steps 1 to 4 if they do not.
+A later redeployment updates the definition in place and repeats the
+take-over, binding and refresh. Confirm that the role members survive; repeat
+step 3 if they do not.
 
 ## Validation matrix
 

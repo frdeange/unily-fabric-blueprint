@@ -1,4 +1,8 @@
-"""Publish the approved items of one environment by naming convention; never execute jobs."""
+"""Publish the approved items of one environment by naming convention.
+
+Never executes notebooks or pipelines. The only job is the Direct Lake framing refresh of
+the semantic models, after their Gold connection is rebound.
+"""
 
 import argparse
 import base64
@@ -8,8 +12,8 @@ import tempfile
 import uuid
 from pathlib import Path
 
-from environment import workspace_names
-from fabric_api import call, find_workspace, list_all
+from environment import gold_connection_name, workspace_names
+from fabric_api import call, find_workspace, list_all, powerbi, refresh_model
 from prepare_deployment import (DEFAULT_WORKSPACE, ID_FIELDS, ITEMS, LIBRARY_NAME, ROOT, STAGES, load_settings,
                                 logical_ids, model_summary, prepare, read_parts, runtime_values)
 
@@ -131,6 +135,36 @@ def verify_model(credential, workspace, items, target):
             raise RuntimeError(f"Semantic model readback mismatch: {name}")
 
 
+def details(source):
+    return {key: source.get("connectionDetails", {}).get(key) for key in ("type", "path")}
+
+
+def bind_and_reframe(credential, workspace, items, environment):
+    """Updating a definition drops its connection binding: take over, rebind Gold and reframe."""
+    name = gold_connection_name(environment)
+    matches = [c for c in list_all(credential, "connections") if c.get("displayName") == name]
+    if len(matches) != 1 or matches[0].get("connectivityType") != "ShareableCloud":
+        raise RuntimeError(f"Shareable cloud connection not found or ambiguous: {name}")
+    connection = matches[0]
+    mask(connection["id"])
+    for model, (kind, _) in ITEMS["analytics"].items():
+        if kind != "SemanticModel":
+            continue
+        item = find_item(items, model, kind, required=True)
+        # Only the model owner can bind it; the deployer takes it over idempotently.
+        powerbi(credential, f"groups/{workspace}/datasets/{item['id']}/Default.TakeOver", {})
+        path = f"workspaces/{workspace}/items/{item['id']}/connections"
+        references = list_all(credential, path)
+        if len(references) != 1 or details(references[0]) != details(connection):
+            raise RuntimeError(f"Data source of {model} does not match {name}")
+        call(credential, f"workspaces/{workspace}/semanticModels/{item['id']}/bindConnection", {
+            "connectionBinding": {"id": connection["id"], "connectivityType": "ShareableCloud",
+                                  "connectionDetails": references[0]["connectionDetails"]}})
+        if [reference.get("id") for reference in list_all(credential, path)] != [connection["id"]]:
+            raise RuntimeError(f"Connection binding did not persist: {model}")
+        refresh_model(credential, workspace, item["id"])
+
+
 def resolve_ids(workspaces, data_items, vault_items):
     lakehouse = lambda items, name: find_item(items, name, "Lakehouse", required=True)["id"]
     ids = {
@@ -179,6 +213,7 @@ def deploy(credential, environment, publish):
                            stages[("data", ("VariableLibrary", "Notebook", "DataPipeline"))], values)
         verify_model(credential, workspaces["analytics"], after["analytics"],
                      stages[("analytics", ("SemanticModel",))])
+    bind_and_reframe(credential, workspaces["analytics"], after["analytics"], environment)
     return {layer: sorted(items) for layer, items in ITEMS.items()}
 
 
@@ -201,7 +236,8 @@ def main():
     report = deploy(credential, environment, publish)
     for layer, items in report.items():
         print(f"{workspace_names(environment)[layer]}: {', '.join(items) or 'no items yet'}")
-    print("Published and verified by readback. No jobs or refreshes executed.")
+    print("Published and verified by readback. Semantic models rebound to Gold and refreshed; "
+          "no notebooks or pipelines executed.")
 
 
 if __name__ == "__main__":
