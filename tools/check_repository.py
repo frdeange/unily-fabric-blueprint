@@ -29,6 +29,7 @@ EXPECTED_ITEMS = {
     Path("vault") / "shared" / "lakehouses" / "Identity.Lakehouse",
 } | {Path("data") / "shared" / "lakehouses" / f"{name}.Lakehouse" for name in ("Bronze", "Silver", "Gold")} | {
     Path("analytics") / "product-analytics" / "semantic-models" / "ProductAnalytics_Safe.SemanticModel",
+    Path("analytics") / "product-analytics" / "data-agents" / "ProductAnalytics_Safe_Agent.DataAgent",
 }
 
 

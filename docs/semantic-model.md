@@ -94,7 +94,7 @@ Behaviour:
   references a hidden object becomes unavailable to the role. Hide new objects
   only after checking both.
 - Copilot in Power BI and Fabric, and Data Agents that use the model as a
-  source, query as the signed-in user and respect RLS and OLS. Q&A, Quick
+  source ([Data Agent](data-agent.md)), query as the signed-in user and respect RLS and OLS. Q&A, Quick
   insights, Smart narrative and Excel data types do not support models with
   OLS.
 - Marking a column hidden (`isHidden`) only hides it in report field lists; it

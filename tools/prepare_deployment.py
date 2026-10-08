@@ -12,6 +12,7 @@ from gold_contract import GOLD_TABLES
 from runtime_config import ID_FIELDS, LIBRARY_NAME, SETTING_FIELDS, validate_config
 
 MODEL_NAME = "ProductAnalytics_Safe"
+AGENT_NAME = "ProductAnalytics_Safe_Agent"
 # layer -> item name -> (Fabric type, folder under fabric/<layer>/).
 ITEMS = {
     "vault": {"Identity": ("Lakehouse", "shared/lakehouses")},
@@ -27,12 +28,18 @@ ITEMS = {
         "ProductAnalytics_GoldPipeline": ("DataPipeline", "product-analytics/pipelines"),
         "ProductAnalytics_Demo": ("DataPipeline", "product-analytics/pipelines"),
     },
-    "analytics": {MODEL_NAME: ("SemanticModel", "product-analytics/semantic-models")},
+    "analytics": {
+        MODEL_NAME: ("SemanticModel", "product-analytics/semantic-models"),
+        AGENT_NAME: ("DataAgent", "product-analytics/data-agents"),
+    },
 }
 # Lakehouses first: the configuration and the semantic model reference their IDs. Pipelines share
-# the data stage with the notebooks they reference, so fabric-cicd can resolve their logical IDs.
+# the data stage with the notebooks they reference, and the Data Agent shares the analytics stage
+# with its semantic model, so fabric-cicd can resolve their logical IDs.
 STAGES = (("vault", ("Lakehouse",)), ("data", ("Lakehouse",)),
-          ("data", ("VariableLibrary", "Notebook", "DataPipeline")), ("analytics", ("SemanticModel",)))
+          ("data", ("VariableLibrary", "Notebook", "DataPipeline")), ("analytics", ("SemanticModel", "DataAgent")))
+AGENT_SOURCE = f"semantic-model-{MODEL_NAME}"
+AGENT_STAGES = ("draft", "published")
 ALLOWED_FILES = {
     "Lakehouse": {".platform", "lakehouse.metadata.json"},
     "Notebook": {".platform", "notebook-content.ipynb"},
@@ -41,7 +48,16 @@ ALLOWED_FILES = {
     "SemanticModel": {".platform", "definition.pbism", "definition/database.tmdl", "definition/model.tmdl",
                       "definition/expressions.tmdl", "definition/relationships.tmdl"}
     | {f"definition/tables/{table}.tmdl" for table in GOLD_TABLES},
+    # Draft and published stages: consumers with query access can only use the published one.
+    "DataAgent": {".platform", "Files/Config/data_agent.json", "Files/Config/publish_info.json"}
+    | {f"Files/Config/{stage}/{file}" for stage in AGENT_STAGES
+       for file in ("stage_config.json", f"{AGENT_SOURCE}/datasource.json")},
 }
+AGENT_SCHEMA = "https://developer.microsoft.com/json-schemas/fabric/item/dataAgent/definition"
+# Fabric limit for Data Agent instructions.
+AGENT_INSTRUCTIONS_LIMIT = 15000
+# TMDL column types as Data Agent element types.
+AGENT_TYPES = {"string": "String", "dateTime": "DateTime", "int64": "Int64", "boolean": "Boolean"}
 # Semantic model roles are listed per item; one role per tenant plus the unfiltered internal role.
 MODEL_ROLES = {"TenantA": "tenant_a", "TenantB": "tenant_b", "TenantC": "tenant_c", "UnilyAll": None}
 # Object-level security for tenant roles: technical audit columns that tenants must not see. OLS lives
@@ -121,6 +137,66 @@ def model_summary(parts):
 
 def read_parts(folder):
     return {p.relative_to(folder).as_posix(): p.read_text(encoding="utf-8") for p in folder.rglob("*") if p.is_file()}
+
+
+def agent_summary(parts):
+    """Authored shape of each Data Agent stage, ignoring metadata Fabric may add."""
+    summary = {}
+    for path, text in parts.items():
+        segments = path.split("/")
+        if segments[:2] != ["Files", "Config"] or len(segments) < 4:
+            continue
+        stage = summary.setdefault(segments[2], {"instructions": None, "sources": {}})
+        content = json.loads(text)
+        if segments[3] == "stage_config.json":
+            stage["instructions"] = content.get("aiInstructions")
+        elif segments[-1] == "datasource.json":
+            source = {key: content.get(key) for key in
+                      ("type", "displayName", "artifactId", "workspaceId", "dataSourceInstructions")}
+            source["selected"] = sorted(e["display_name"] for e in content.get("elements") or [] if e.get("is_selected"))
+            stage["sources"][segments[3]] = source
+    return summary
+
+
+def agent_elements(model):
+    """Every table, tenant-visible column and measure of the model, selected and keyed by name."""
+    element = lambda key, name, kind, data_type=None: (key, f"semantic_model.{kind}", name, data_type, True)
+    expected = {}
+    for table, details in model["tables"].items():
+        hidden = TENANT_HIDDEN_COLUMNS.get(table, ())
+        children = [element(f"{table}.{column}", column, "column", AGENT_TYPES[kind])
+                    for column, (kind, _) in details["columns"].items() if column not in hidden]
+        children += [element(f"{table}.{measure}", measure, "measure") for measure in details["measures"]]
+        expected[table] = (element(table, table, "table"), sorted(children))
+    return expected
+
+
+def check_agent(parts, model_parts):
+    """The agent's only source is the safe model, it exposes nothing tenants cannot see and is published as authored."""
+    model_id = json.loads(model_parts[".platform"])["config"]["logicalId"]
+    definition = "".join(text for path, text in parts.items() if path != ".platform")
+    if set(GUID.findall(definition)) != {model_id, DEFAULT_WORKSPACE}:
+        raise ValueError("Data Agent must reference the safe semantic model through placeholders only")
+    if json.loads(parts["Files/Config/data_agent.json"]) != {"$schema": f"{AGENT_SCHEMA}/dataAgent/2.1.0/schema.json"}:
+        raise ValueError("Unexpected Data Agent definition schema")
+    draft, published = ({path.split("/", 3)[3]: text for path, text in parts.items()
+                         if path.startswith(f"Files/Config/{stage}/")} for stage in AGENT_STAGES)
+    if draft != published:
+        raise ValueError("Published Data Agent stage must match the draft")
+    stage = agent_summary(parts)["draft"]
+    if not stage["instructions"] or len(stage["instructions"]) > AGENT_INSTRUCTIONS_LIMIT:
+        raise ValueError("Data Agent instructions must be present and within the Fabric limit")
+    source = stage["sources"][AGENT_SOURCE]
+    if (source["type"], source["displayName"], source["artifactId"], source["workspaceId"]) != (
+            "semantic_model", MODEL_NAME, model_id, DEFAULT_WORKSPACE):
+        raise ValueError(f"Data Agent source must be the {MODEL_NAME} semantic model in the same workspace")
+    elements = json.loads(published[f"{AGENT_SOURCE}/datasource.json"])["elements"]
+    actual = {e["display_name"]: ((e["id"], e["type"], e["display_name"], e.get("data_type"), e["is_selected"]),
+                                  sorted((c["id"], c["type"], c["display_name"], c.get("data_type") if
+                                          c["type"] == "semantic_model.column" else None, c["is_selected"])
+                                         for c in e["children"])) for e in elements}
+    if actual != agent_elements(model_summary(model_parts)):
+        raise ValueError("Data Agent elements differ from the tenant-visible semantic model")
 
 
 def tenants(settings):
@@ -221,6 +297,8 @@ def check_scope(root):
                 if summary["sources"] != [f"{ONELAKE}/{DATA_WORKSPACE_PLACEHOLDER}/{GOLD_PLACEHOLDER}"]:
                     raise ValueError(f"Semantic model must read Gold through Direct Lake on OneLake: {name}")
                 check_model(summary)
+            if kind == "DataAgent":
+                check_agent(read_parts(item), read_parts(item_folder(root, layer, MODEL_NAME)))
 
 
 def resolve_model(folder, values):
@@ -261,6 +339,8 @@ def prepare(root, target, layer, kinds, environment, values=None):
     selected = stage_items(layer, kinds)
     if not selected:
         raise ValueError("Empty deployment stage")
+    if "DataAgent" in selected.values() and "SemanticModel" not in selected.values():
+        raise ValueError("The Data Agent must be published with its semantic model")
     needs_values = "VariableLibrary" in selected.values()
     needs_ids = "SemanticModel" in selected.values()
     if needs_values or needs_ids:

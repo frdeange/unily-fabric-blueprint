@@ -14,8 +14,9 @@ from pathlib import Path
 
 from environment import gold_connection_name, workspace_names
 from fabric_api import call, find_workspace, list_all, powerbi, refresh_model
-from prepare_deployment import (DEFAULT_WORKSPACE, ID_FIELDS, ITEMS, LIBRARY_NAME, ROOT, STAGES, load_settings,
-                                logical_ids, model_summary, prepare, read_parts, runtime_values)
+from prepare_deployment import (DEFAULT_WORKSPACE, ID_FIELDS, ITEMS, LIBRARY_NAME, MODEL_NAME, ROOT, STAGES,
+                                agent_summary, load_settings, logical_ids, model_summary, prepare, read_parts,
+                                runtime_values)
 
 # Fabric creates one SQL analytics endpoint per lakehouse, with the same display name.
 COMPANIONS = {"Lakehouse": "SQLEndpoint"}
@@ -127,6 +128,8 @@ def verify_definitions(credential, workspace, items, target, values):
 def verify_model(credential, workspace, items, target):
     """The deployed TMDL keeps the authored tables, measures, relationships, roles and Gold source."""
     for name, (kind, _) in ITEMS["analytics"].items():
+        if kind != "SemanticModel":
+            continue
         item = find_item(items, name, kind, required=True)
         parts = decode_parts(call(
             credential, f"workspaces/{workspace}/semanticModels/{item['id']}/getDefinition?format=TMDL", {}))
@@ -163,6 +166,22 @@ def bind_and_reframe(credential, workspace, items, environment):
         if [reference.get("id") for reference in list_all(credential, path)] != [connection["id"]]:
             raise RuntimeError(f"Connection binding did not persist: {model}")
         refresh_model(credential, workspace, item["id"])
+
+
+def verify_agents(credential, workspace, items, target):
+    """Both stages keep the authored instructions and point at the deployed model in this workspace."""
+    model_logical = next(logical for logical, name in logical_ids(ROOT, "analytics").items() if name == MODEL_NAME)
+    model = find_item(items, MODEL_NAME, "SemanticModel", required=True)["id"]
+    for name, (kind, _) in ITEMS["analytics"].items():
+        if kind != "DataAgent":
+            continue
+        item = find_item(items, name, kind, required=True)
+        parts = decode_parts(call(credential, f"workspaces/{workspace}/items/{item['id']}/getDefinition", {}))
+        # Apply the substitutions fabric-cicd performs at publication.
+        expected = agent_summary({path: text.replace(model_logical, model).replace(DEFAULT_WORKSPACE, workspace)
+                                  for path, text in read_parts(target / f"{name}.{kind}").items()})
+        if agent_summary(parts) != expected:
+            raise RuntimeError(f"Data Agent readback mismatch: {name}")
 
 
 def resolve_ids(workspaces, data_items, vault_items):
@@ -211,8 +230,9 @@ def deploy(credential, environment, publish):
             verify_lakehouses(credential, workspaces[layer], layer, after[layer])
         verify_definitions(credential, workspaces["data"], after["data"],
                            stages[("data", ("VariableLibrary", "Notebook", "DataPipeline"))], values)
-        verify_model(credential, workspaces["analytics"], after["analytics"],
-                     stages[("analytics", ("SemanticModel",))])
+        analytics = stages[("analytics", ("SemanticModel", "DataAgent"))]
+        verify_model(credential, workspaces["analytics"], after["analytics"], analytics)
+        verify_agents(credential, workspaces["analytics"], after["analytics"], analytics)
     bind_and_reframe(credential, workspaces["analytics"], after["analytics"], environment)
     return {layer: sorted(items) for layer, items in ITEMS.items()}
 
