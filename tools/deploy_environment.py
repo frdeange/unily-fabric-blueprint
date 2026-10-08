@@ -142,30 +142,44 @@ def details(source):
     return {key: source.get("connectionDetails", {}).get(key) for key in ("type", "path")}
 
 
-def bind_and_reframe(credential, workspace, items, environment):
-    """Updating a definition drops its connection binding: take over, rebind Gold and reframe."""
+def gold_connection(credential, environment):
     name = gold_connection_name(environment)
     matches = [c for c in list_all(credential, "connections") if c.get("displayName") == name]
     if len(matches) != 1 or matches[0].get("connectivityType") != "ShareableCloud":
         raise RuntimeError(f"Shareable cloud connection not found or ambiguous: {name}")
-    connection = matches[0]
-    mask(connection["id"])
+    mask(matches[0]["id"])
+    return matches[0]
+
+
+def bind_models(credential, workspace, items, connection, unbound_only=False):
+    """Take over and bind each semantic model's Gold reference; return the bound model IDs.
+
+    Updating a definition drops its binding, and Fabric refuses to update an existing model
+    whose data source is unbound. So unbound models are bound before publication (new models
+    are skipped) and every model is rebound after it.
+    """
+    bound = []
     for model, (kind, _) in ITEMS["analytics"].items():
         if kind != "SemanticModel":
             continue
-        item = find_item(items, model, kind, required=True)
-        # Only the model owner can bind it; the deployer takes it over idempotently.
-        powerbi(credential, f"groups/{workspace}/datasets/{item['id']}/Default.TakeOver", {})
+        item = find_item(items, model, kind, required=not unbound_only)
+        if item is None:
+            continue
         path = f"workspaces/{workspace}/items/{item['id']}/connections"
         references = list_all(credential, path)
         if len(references) != 1 or details(references[0]) != details(connection):
-            raise RuntimeError(f"Data source of {model} does not match {name}")
+            raise RuntimeError(f"Data source of {model} does not match {connection['displayName']}")
+        if unbound_only and references[0].get("id"):
+            continue
+        # Only the model owner can bind it; the deployer takes it over idempotently.
+        powerbi(credential, f"groups/{workspace}/datasets/{item['id']}/Default.TakeOver", {})
         call(credential, f"workspaces/{workspace}/semanticModels/{item['id']}/bindConnection", {
             "connectionBinding": {"id": connection["id"], "connectivityType": "ShareableCloud",
                                   "connectionDetails": references[0]["connectionDetails"]}})
         if [reference.get("id") for reference in list_all(credential, path)] != [connection["id"]]:
             raise RuntimeError(f"Connection binding did not persist: {model}")
-        refresh_model(credential, workspace, item["id"])
+        bound.append(item["id"])
+    return bound
 
 
 def verify_agents(credential, workspace, items, target):
@@ -210,6 +224,7 @@ def deploy(credential, environment, publish):
     for layer, items in ITEMS.items():
         for name, (kind, _) in items.items():
             find_item(before[layer], name, kind)
+    connection = gold_connection(credential, environment)
     with tempfile.TemporaryDirectory(prefix="fabric-deploy-") as directory:
         temp = Path(directory)
         values = None
@@ -223,6 +238,8 @@ def deploy(credential, environment, publish):
             stage = temp / f"stage-{index}"
             prepare(ROOT, stage, layer, kinds, environment, values)
             stages[(layer, kinds)] = stage
+            if "SemanticModel" in kinds:
+                bind_models(credential, workspaces[layer], inventory(layer), connection, unbound_only=True)
             publish(workspaces[layer], stage, list(kinds))
         after = {layer: inventory(layer) for layer in names}
         for layer in names:
@@ -233,7 +250,8 @@ def deploy(credential, environment, publish):
         analytics = stages[("analytics", ("SemanticModel", "DataAgent"))]
         verify_model(credential, workspaces["analytics"], after["analytics"], analytics)
         verify_agents(credential, workspaces["analytics"], after["analytics"], analytics)
-    bind_and_reframe(credential, workspaces["analytics"], after["analytics"], environment)
+    for model in bind_models(credential, workspaces["analytics"], after["analytics"], connection):
+        refresh_model(credential, workspaces["analytics"], model)
     return {layer: sorted(items) for layer, items in ITEMS.items()}
 
 
