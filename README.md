@@ -55,6 +55,9 @@ production runtime identity are not implemented yet.
   automatic rebind and refresh, and the post-deployment runbook.
 - `docs/data-agent.md`: Data Agent access pattern, definition checks, sharing
   runbook and evaluation set.
+- `docs/agent-access-matrix.md`: real-user enforcement results and open gaps
+  across direct queries, Power BI Copilot, Fabric Data Agent, Copilot Studio
+  and Microsoft 365 Copilot.
 
 Items follow `fabric/<domain>/<type>/<Name>.<FabricType>/`. Keep each item's
 definition and `.platform` together. Semantic models use TMDL under
