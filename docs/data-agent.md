@@ -107,6 +107,10 @@ group. Expected figures come from the dev Gold counts in the
 [validation matrix](semantic-model.md#validation-matrix) and change if the
 synthetic generator changes.
 
+The cross-surface test results, including the observed group-share
+authorization gap and the blocked Copilot paths, are recorded in the
+[agent access enforcement matrix](agent-access-matrix.md).
+
 | # | Question | `TenantA` | `TenantB` | `TenantC` | `AllTenants` |
 | --- | --- | --- | --- | --- | --- |
 | 1 | How many usage events are there? | 1,344 | 2,016 | 2,688 | 6,048, shown per tenant (1,344 / 2,016 / 2,688) |
@@ -138,5 +142,7 @@ cross-tenant figure as a failure immediately.
 - Element IDs are names. If the agent is edited in the portal, Fabric may
   regenerate them; the next deployment restores the committed definition.
 - The agent is consumed in Fabric only. Publishing to Microsoft 365 Copilot,
-  Copilot Studio or Azure AI Foundry, and the Fabric IQ ontology, are out of
-  scope.
+  Copilot Studio or Azure AI Foundry, and the Fabric IQ ontology, are separate
+  distribution decisions. Their prerequisites and current validation status
+  are recorded in the
+  [agent access enforcement matrix](agent-access-matrix.md).

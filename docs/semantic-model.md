@@ -164,6 +164,10 @@ step 3 if they do not.
 
 ## Validation matrix
 
+For results across direct queries, Power BI Copilot, Fabric Data Agent,
+Copilot Studio and Microsoft 365 Copilot, see the
+[agent access enforcement matrix](agent-access-matrix.md).
+
 | Principal | Expected result |
 | --- | --- |
 | Member of `Unily-Analytics-<Env>-TenantA` | Only `tenant_a` rows (dev: 1,344 events, 12 users) |
