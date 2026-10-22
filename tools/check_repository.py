@@ -2,21 +2,24 @@
 
 import json
 import re
+import subprocess
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 ALLOWED_ROOT_FILES = {"README.md", ".gitignore", ".pre-commit-config.yaml", "requirements-dev.txt", "requirements-deploy.txt"}
-ALLOWED_DIRECTORIES = {"src", "tests", "tools", "fabric", ".github", "config", "docs"}
+ALLOWED_DIRECTORIES = {"src", "tests", "tools", "fabric", ".github", "config", "docs", "apps"}
 PATTERNS = [
     re.compile(r"\b(?:gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,})\b"),
     re.compile(r"-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----"),
     re.compile(r"\beyJ[A-Za-z0-9_-]{15,}\.[A-Za-z0-9_-]{15,}\.[A-Za-z0-9_-]{15,}\b"),
     re.compile(r"(?i)AccountKey=[A-Za-z0-9+/]{20,}"),
 ]
-EXCLUDED = {".git", "__pycache__", ".venv", ".pytest_cache"}
+EXCLUDED = {".git", "__pycache__", ".venv", ".pytest_cache", "node_modules", "dist"}
 GUID = re.compile(r"\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b", re.I)
 # Example logical IDs plus fabric-cicd's workspace placeholder in pipeline references.
 EXAMPLE_GUIDS = {f"00000000-0000-4000-8000-{i:012d}" for i in range(1, 20)} | {"00000000-0000-0000-0000-000000000000"}
+# Anonymous scaffold-telemetry correlation id written by create-rayfin; carries no tenant data.
+GUID_EXEMPT_FILES = {Path("apps") / "usage-explorer" / "rayfin" / ".project.json"}
 
 EXPECTED_ITEMS = {
     Path("data") / "product-analytics" / "notebooks" / f"{name}.Notebook"
@@ -45,8 +48,20 @@ def check_fabric_scope(root):
                 raise ValueError(f"File outside allowed Fabric items: {relative}")
 
 
+def candidate_files():
+    """Tracked and untracked-but-not-ignored files; falls back to a full walk outside Git."""
+    try:
+        output = subprocess.run(
+            ["git", "ls-files", "-z", "--cached", "--others", "--exclude-standard"],
+            cwd=ROOT, capture_output=True, check=True,
+        ).stdout.decode("utf-8")
+    except (OSError, subprocess.CalledProcessError):
+        return [path for path in ROOT.rglob("*")]
+    return [ROOT / name for name in output.split("\0") if name]
+
+
 def main():
-    for path in ROOT.rglob("*"):
+    for path in candidate_files():
         relative = path.relative_to(ROOT)
         if any(part in EXCLUDED for part in relative.parts) or not path.is_file():
             continue
@@ -58,7 +73,7 @@ def main():
         if any(word in path.name.lower() for word in ("password", "credential", "evidence")):
             raise ValueError(f"Sensitive artifact filename: {relative}")
         text = path.read_text(encoding="utf-8")
-        if any(value.lower() not in EXAMPLE_GUIDS for value in GUID.findall(text)):
+        if relative not in GUID_EXEMPT_FILES and any(value.lower() not in EXAMPLE_GUIDS for value in GUID.findall(text)):
             raise ValueError(f"Non-example identifier detected: {relative}")
         if any(pattern.search(text) for pattern in PATTERNS):
             raise ValueError(f"Potential credential detected: {relative}")

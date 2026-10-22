@@ -29,6 +29,8 @@ and code in English.
 6. **Deploy separately.** Merging never publishes to Fabric. Publication runs
    only through the manual workflow and the approved `dev` Environment.
    Notebook execution and any data change need a separate explicit approval.
+   The Rayfin app in `apps/usage-explorer` follows the same rule through its own
+   manual workflow (`deploy-app-dev.yml`); see `apps/usage-explorer/README.md`.
 
 ## Labels
 

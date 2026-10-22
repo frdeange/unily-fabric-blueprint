@@ -1,0 +1,72 @@
+name: Deploy app to dev
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: 'Commit SHA or tag to deploy (use a previous release to roll back)'
+        required: false
+        default: 'main'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: fabric-app-dev
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: dev
+    permissions:
+      contents: read
+      id-token: write
+    defaults:
+      run:
+        working-directory: apps/usage-explorer
+    env:
+      RAYFIN_WORKSPACE_ID: ${{ secrets.RAYFIN_WORKSPACE_ID }}
+      RAYFIN_SEMANTIC_MODEL_ID: ${{ secrets.RAYFIN_SEMANTIC_MODEL_ID }}
+      ITEM_NAME: usage-explorer-dev
+    steps:
+      - name: Check out requested ref
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ inputs.ref }}
+          persist-credentials: false
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: apps/usage-explorer/package-lock.json
+      - name: Install locked dependencies
+        run: npm ci
+      - name: Validate before authentication
+        run: |
+          node scripts/render-rayfin-config.mjs --check
+          npm run typecheck
+          npm run lint
+          npm test
+          npm run validate:visual
+      - name: Authenticate with Entra federation
+        uses: azure/login@a457da9ea143d694b1b9c7c869ebb04ebe844ef5 # v2.3.0
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          allow-no-subscriptions: true
+      - name: Render environment configuration and acquire a Fabric token
+        run: |
+          node scripts/render-rayfin-config.mjs
+          token="$(az account get-access-token --resource https://api.fabric.microsoft.com --query accessToken -o tsv)"
+          echo "::add-mask::$token"
+          echo "RAYFIN_TOKEN=$token" >> "$GITHUB_ENV"
+      - name: Preview deployment (no changes)
+        run: npx rayfin up --dry-run --workspace-id "$RAYFIN_WORKSPACE_ID" --item-name "$ITEM_NAME" --json
+      - name: Deploy
+        run: npx rayfin up --workspace-id "$RAYFIN_WORKSPACE_ID" --item-name "$ITEM_NAME" --yes --json
+      - name: Verify deployment status
+        run: npx rayfin up status --json

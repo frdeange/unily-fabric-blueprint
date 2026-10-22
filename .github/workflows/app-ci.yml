@@ -1,0 +1,52 @@
+name: App CI
+
+on:
+  pull_request:
+    paths:
+      - 'apps/**'
+      - '.github/workflows/app-ci.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'apps/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: app-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  app-validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: apps/usage-explorer
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: apps/usage-explorer/package-lock.json
+      - name: Install locked dependencies
+        run: npm ci
+      - name: Check committed Rayfin config keeps placeholder identifiers
+        run: node scripts/render-rayfin-config.mjs --check
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Lint
+        run: npm run lint
+      - name: Unit tests
+        run: npm test
+      - name: Validate visuals
+        run: npm run validate:visual
+      - name: Build
+        run: npm run build

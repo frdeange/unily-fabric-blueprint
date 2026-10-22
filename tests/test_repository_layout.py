@@ -2,7 +2,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from tools.check_repository import EXPECTED_ITEMS, check_fabric_scope
+from tools.check_repository import ALLOWED_DIRECTORIES, EXCLUDED, EXPECTED_ITEMS, GUID_EXEMPT_FILES, check_fabric_scope
 
 
 class LayoutTests(unittest.TestCase):
@@ -40,6 +40,18 @@ class LayoutTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             with self.assertRaisesRegex(ValueError, "scope"):
                 check_fabric_scope(Path(directory))
+
+
+class AppScopeTests(unittest.TestCase):
+    def test_apps_are_allowed_and_build_artifacts_excluded(self):
+        self.assertIn("apps", ALLOWED_DIRECTORIES)
+        self.assertTrue({"node_modules", "dist"} <= EXCLUDED)
+
+    def test_only_the_telemetry_id_file_is_guid_exempt(self):
+        self.assertEqual(
+            GUID_EXEMPT_FILES,
+            {Path("apps") / "usage-explorer" / "rayfin" / ".project.json"},
+        )
 
 
 if __name__ == "__main__":
