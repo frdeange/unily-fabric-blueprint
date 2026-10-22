@@ -30,6 +30,22 @@ flowchart LR
 | **Analytics** | Business semantic models with RLS, Data Agents, reports, and the future Fabric IQ ontology. Reads Gold only. | Copies of data; Bronze or Silver access. |
 | **Vault** | Identity mapping, restricted PII audit and, if justified, an identified model. | Business consumers. |
 
+### Application-owned operational records (demo exception)
+
+The existing `usage-explorer-dev` Fabric app in `Unily-Analytics-Dev` is retained
+as the deployment target for the Adoption Workbench (`apps/usage-explorer`).
+Its legacy item name predates this convention; it is not a new naming pattern.
+The approved application scenario adds private `Diagnosis` and `FollowUp`
+entities in the app-managed MSSQL data service. These are application-owned
+working records and aggregate evidence snapshots, not copies of source event
+tables or an alternative Gold layer. The source semantic model remains
+read-only. Enabling or deploying this service requires separate approval;
+no shared data/security changes are implied by approving the source PR.
+
+Both entities use authenticated owner policies. Cross-user assignment and
+outbound integrations are outside this demo. App record retention, backup and
+schema-compatible rollback are separate from source-model deployment.
+
 Why the layer boundary:
 
 - A workspace role applies to every current and future item in the workspace.

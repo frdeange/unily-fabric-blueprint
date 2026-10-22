@@ -5,10 +5,10 @@
 // </copyright>
 //-----------------------------------------------------------------------
 
-import { UsageExplorer } from './UsageExplorer';
+import { AdoptionWorkbench } from './AdoptionWorkbench';
 
 function App() {
-  return <UsageExplorer />;
+  return <AdoptionWorkbench />;
 }
 
 export default App;

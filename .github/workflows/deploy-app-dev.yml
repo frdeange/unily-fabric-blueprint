@@ -49,6 +49,7 @@ jobs:
         run: |
           node scripts/render-rayfin-config.mjs --check
           npm run typecheck
+          npm run test:schema
           npm run lint
           npm test
           npm run validate:visual

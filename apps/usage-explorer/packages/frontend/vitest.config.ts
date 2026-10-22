@@ -23,6 +23,7 @@ export default defineConfig({
     setupFiles: ['src/test/setup.ts'],
     globals: true,
     testTimeout: 15_000,
+    maxWorkers: 2,
     /**
      * Only the app's own specs. The template also ships `scripts/*.test.mjs`,
      * which are run by `node --test` and are not vitest suites, so without

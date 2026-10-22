@@ -5,19 +5,24 @@
 // </copyright>
 //-----------------------------------------------------------------------
 
-/**
- * The app's Rayfin data schema registration.
- *
- * Empty on purpose. A dashboard over a Power BI semantic model stores nothing,
- * so the data service ships disabled in `rayfin/rayfin.yml` and both of these
- * stay as they are.
- *
- * When the app needs to own records — a tracker, a request list, an admin screen
- * — read the `data-modeling` skill, set `services.data.enabled: true`, declare
- * each entity as a decorated class, export it from this package, add it to
- * `UniversalAppSchema`, and register it in `schema`. Every entity needs explicit
- * access control; anonymous access is refused at validation time.
- */
-export type { UniversalAppSchema } from '@rayfin-app/shared';
+import { Diagnosis } from './Diagnosis.js';
+import { FollowUp } from './FollowUp.js';
+import type { UniversalAppSchema } from '@rayfin-app/shared';
 
-export const schema = [];
+/**
+ * The app's Rayfin data schema.
+ *
+ * `UniversalAppSchema` in `@rayfin-app/shared` is what makes
+ * `(await getRayfinClient()).data.<Entity>` typed, so keep it in step with `schema`
+ * below: a class registered in `schema` but missing from the shared type is
+ * reachable at runtime and invisible to the compiler.
+ *
+ * To add an entity: declare it as a decorated class in this directory, export it
+ * here, add its record contract to `@rayfin-app/shared`, and register it in the
+ * array. Every entity needs explicit access control — anonymous access is
+ * refused at validation time. See the `data-modeling` skill.
+ */
+export type { UniversalAppSchema };
+export { Diagnosis, FollowUp };
+
+export const schema = [Diagnosis, FollowUp];
