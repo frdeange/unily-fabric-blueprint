@@ -42,6 +42,8 @@ jobs:
         run: node scripts/render-rayfin-config.mjs --check
       - name: Typecheck
         run: npm run typecheck
+      - name: Validate app-owned schema and access policies
+        run: npm run test:schema
       - name: Lint
         run: npm run lint
       - name: Unit tests

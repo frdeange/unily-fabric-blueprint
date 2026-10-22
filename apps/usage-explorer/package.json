@@ -23,6 +23,7 @@
     "lint": "npm run -w @rayfin-app/frontend lint",
     "preview": "npm run -w @rayfin-app/frontend preview",
     "test": "npm run -w @rayfin-app/frontend test",
+    "test:schema": "npm run -w @rayfin-app/data build && node --test scripts/workbench-schema.test.mjs",
     "test:watch": "npm run -w @rayfin-app/frontend test:watch",
     "typecheck": "tsc -b",
     "pack:add": "node scripts/scaffold.mjs",
@@ -44,6 +45,7 @@
   "rayfinPacks": [
     "analytics",
     "connectors",
+    "data-modeling",
     "visuals"
   ],
   "dependencies": {

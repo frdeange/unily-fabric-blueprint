@@ -2,55 +2,111 @@
 
 @custom-variant dark (&:is(.dark *));
 
+:root {
+  color-scheme: light;
+  --cp-bg: #f7f4ef;
+  --cp-bg-elevated: #fcfbf8;
+  --cp-surface: #ffffff;
+  --cp-surface-soft: #f5f5f5;
+  --cp-border: #dedede;
+  --cp-border-strong: #919191;
+  --cp-text: #242424;
+  --cp-text-muted: #5c5c5c;
+  --cp-text-soft: #6f6f6f;
+  --cp-accent: #b11f4b;
+  --cp-accent-hover: #9a1a41;
+  --cp-accent-soft: rgba(177, 31, 75, 0.08);
+  --cp-accent-fg: #ffffff;
+  --cp-success: #16a34a;
+  --cp-danger: #dc2626;
+  --cp-warning: #f59e0b;
+  --cp-link: #0078d4;
+  --cp-shadow: 0 18px 48px rgba(0, 0, 0, 0.12);
+  --cp-overlay: rgba(255, 255, 255, 0.8);
+  --cp-panel: rgba(255, 255, 255, 0.86);
+  --cp-panel-strong: rgba(255, 255, 255, 0.96);
+  --cp-sheen: rgba(255, 255, 255, 0.55);
+  --cp-highlight: rgba(177, 31, 75, 0.12);
+  --wb-trend-height: 240px;
+  --wb-shell-columns: 15rem 1fr;
+}
+html[data-theme="dark"] {
+  color-scheme: dark;
+  --cp-bg: #3d3b3a;
+  --cp-bg-elevated: #343231;
+  --cp-surface: #292929;
+  --cp-surface-soft: #2e2e2e;
+  --cp-border: #474747;
+  --cp-border-strong: #5f5f5f;
+  --cp-text: #dedede;
+  --cp-text-muted: #919191;
+  --cp-text-soft: #b0b0b0;
+  --cp-accent: #fd8ea1;
+  --cp-accent-hover: #fb7b91;
+  --cp-accent-soft: rgba(253, 142, 161, 0.14);
+  --cp-accent-fg: #1a1a1a;
+  --cp-success: #4ade80;
+  --cp-danger: #f87171;
+  --cp-warning: #fbbf24;
+  --cp-link: #4da6ff;
+  --cp-shadow: 0 18px 48px rgba(0, 0, 0, 0.32);
+  --cp-overlay: rgba(41, 41, 41, 0.88);
+  --cp-panel: rgba(41, 41, 41, 0.72);
+  --cp-panel-strong: rgba(41, 41, 41, 0.96);
+  --cp-sheen: rgba(255, 255, 255, 0.04);
+  --cp-highlight: rgba(253, 142, 161, 0.12);
+}
+
 /* Bridged tokens — kept in `@theme static` so the CSS vars are always
    emitted, not tree-shaken when no Tailwind utility consumes them.
    Required because <VegaVisual> and <DataGrid> read these at runtime via
    `useCssTheme()` and project them into a JS theme object (Vega's SVG output
    cannot resolve `var()` references). */
 @theme static {
-  --color-brand: #0f6cbd; /* bar/area fills, button-like brand surfaces */
-  --color-brand-foreground: #0f6cbd; /* line/point marks, branded text & emphasis */
-  --color-hover: #f5f5f5; /* row/cell hover surface in DataGrid + visuals */
+  --color-brand: var(--cp-accent);
+  --color-brand-foreground: var(--cp-accent);
+  --color-hover: var(--cp-surface-soft);
 }
 
 @theme {
   /* Color tokens — light theme
      Usage: bg-*, text-*, border-* (e.g. bg-primary text-primary-foreground)
      Each token has a -foreground pair for text on that surface. */
-  --color-background: #ffffff; /* page background */
-  --color-foreground: #242424; /* default text */
+  --color-background: var(--cp-bg);
+  --color-foreground: var(--cp-text);
 
-  --color-card: #ffffff; /* card surfaces */
-  --color-card-foreground: #242424;
+  --color-card: var(--cp-surface);
+  --color-card-foreground: var(--cp-text);
 
-  --color-popover: #ffffff; /* popover/dropdown surfaces */
-  --color-popover-foreground: #242424;
+  --color-popover: var(--cp-surface);
+  --color-popover-foreground: var(--cp-text);
 
-  --color-primary: #0f6cbd; /* primary actions & buttons */
-  --color-primary-foreground: #ffffff;
+  --color-primary: var(--cp-accent);
+  --color-primary-foreground: var(--cp-accent-fg);
 
-  --color-secondary: #fafafa; /* secondary actions */
-  --color-secondary-foreground: #242424;
+  --color-secondary: var(--cp-bg-elevated);
+  --color-secondary-foreground: var(--cp-text);
 
-  --color-muted: #f0f0f0; /* subtle backgrounds */
-  --color-muted-foreground: #616161; /* subdued text */
+  --color-muted: var(--cp-surface-soft);
+  --color-muted-foreground: var(--cp-text-muted);
 
-  --color-accent: #f5f5f5; /* accent highlights */
-  --color-accent-foreground: #242424;
+  --color-accent: var(--cp-accent-soft);
+  --color-accent-foreground: var(--cp-text);
 
-  --color-destructive: #c50f1f; /* errors & destructive actions */
-  --color-destructive-foreground: #ffffff;
+  --color-destructive: var(--cp-danger);
+  --color-destructive-foreground: var(--cp-accent-fg);
 
-  --color-border: #e0e0e0; /* default border */
-  --color-input: #e0e0e0; /* input field borders */
-  --color-ring: #0f6cbd; /* focus rings */
+  --color-border: var(--cp-border);
+  --color-input: var(--cp-border);
+  --color-ring: var(--cp-accent);
+  --container-workbench: 100rem;
 
   --radius-none: 0;
   --radius-sm: 2px;
   --radius-md: 4px;
   --radius-lg: 6px;
-  --radius-xl: 8px;
-  --radius-2xl: 12px;
+  --radius-xl: 10px;
+  --radius-2xl: 16px;
   --radius-3xl: 16px;
   --radius-4xl: 24px;
   --radius-5xl: 32px;
@@ -108,20 +164,11 @@
 
   /* Font Families
      Usage: font-* (e.g. font-heading, font-base) */
-  --font-heading:
-    'Segoe UI', 'Segoe UI Web (West European)',
-    /* headings, titles, display text */ -apple-system, BlinkMacSystemFont,
-    Roboto, 'Helvetica Neue', sans-serif;
-  --font-base:
-    'Segoe UI', 'Segoe UI Web (West European)',
-    /* body text, labels, UI controls */ -apple-system, BlinkMacSystemFont,
-    Roboto, 'Helvetica Neue', sans-serif;
+  --font-heading: 'Segoe UI', Aptos, Calibri, -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-base: 'Segoe UI', Aptos, Calibri, -apple-system, BlinkMacSystemFont, sans-serif;
   --font-monospace:
     Consolas, 'Courier New', Courier, monospace; /* code, pre-formatted text */
-  --font-numeric:
-    Bahnschrift, 'Segoe UI',
-    /* KPI values, numeric displays */ 'Segoe UI Web (West European)',
-    -apple-system, BlinkMacSystemFont, Roboto, 'Helvetica Neue', sans-serif;
+  --font-numeric: 'Segoe UI', Aptos, Calibri, -apple-system, BlinkMacSystemFont, sans-serif;
 
   /* Icon Sizes — 100-based scale
      Usage: icon-size-* custom utility (e.g. icon-size-200) */
@@ -140,50 +187,43 @@
 }
 
 @layer base {
-  .dark {
-    /* Color tokens — dark theme */
-    --color-background: #292929;
-    --color-foreground: #ffffff;
-
-    --color-card: #292929;
-    --color-card-foreground: #ffffff;
-
-    --color-popover: #292929;
-    --color-popover-foreground: #ffffff;
-
-    --color-primary: #115ea3;
-    --color-primary-foreground: #ffffff;
-
-    --color-secondary: #1f1f1f;
-    --color-secondary-foreground: #ffffff;
-
-    --color-muted: #141414;
-    --color-muted-foreground: #adadad;
-
-    --color-accent: #3d3d3d;
-    --color-accent-foreground: #ffffff;
-
-    --color-destructive: #c50f1f;
-    --color-destructive-foreground: #ffffff;
-
-    --color-border: #525252;
-    --color-input: #525252;
-    --color-ring: #479ef5;
-
-    --color-brand: #115ea3;
-    --color-brand-foreground: #479ef5;
-    --color-hover: #3d3d3d;
-  }
-}
-
-@layer base {
   * {
     @apply border-border;
   }
 
   body {
-    @apply bg-background text-foreground antialiased;
+    @apply bg-background font-base text-foreground antialiased;
   }
+  button, input, textarea, select {
+    font-family: inherit;
+  }
+  button, a, input, select, textarea {
+    &:focus-visible {
+      outline: 2px solid var(--cp-accent);
+      outline-offset: 3px;
+    }
+  }
+  button:not(:disabled), select:not(:disabled) {
+    cursor: pointer;
+  }
+  :disabled {
+    cursor: not-allowed;
+  }
+}
+
+@layer components {
+  .wb-panel { @apply rounded-2xl border bg-card p-500; }
+  .wb-eyebrow { @apply text-200 font-semibold uppercase tracking-widest text-primary; }
+  .wb-primary { @apply inline-flex items-center justify-center gap-200 rounded-xl bg-primary px-400 py-300 text-300 font-semibold text-primary-foreground disabled:opacity-50; }
+  .wb-primary:hover:not(:disabled) { background: var(--cp-accent-hover); }
+  .wb-secondary { @apply inline-flex items-center justify-center gap-200 rounded-xl border bg-card px-300 py-200 text-300 font-medium hover:bg-muted disabled:opacity-50; }
+  .wb-input { @apply min-w-0 w-full rounded-xl border bg-card px-300 py-200 text-300 text-foreground; }
+  .wb-field { @apply flex min-w-0 flex-col gap-200 text-200 font-semibold; }
+  .wb-badge { @apply inline-flex items-center gap-100 rounded-full border px-200 py-100 text-200; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; }
 }
 
 html,

@@ -1,14 +1,35 @@
-# Tenant Product Usage Explorer (Rayfin app)
+# Adoption Workbench (Rayfin app)
 
-A small Fabric app (Rayfin, preview) that reads the **synthetic** `ProductAnalytics_Safe` semantic model live and shows product usage per tenant: key figures, events and active users by tenant, a monthly trend and feature usage.
+A Fabric app (Rayfin, preview) that connects **live investigation** to **persistent follow-through**. Read the synthetic `ProductAnalytics_Safe` semantic model, capture an evidence-based diagnosis, and manage private follow-up actions in the app's own database.
 
-It exists to demonstrate an application delivery route on Fabric: issue, branch, pull request, automated checks, gated deployment and rollback. The data is synthetic and the lab it comes from is our own technical hypothesis, not confirmed customer architecture.
+The demo workflow is our proposal, not a confirmed Unily process. The source data and lab architecture are synthetic technical hypotheses, not customer facts. There is no churn model, invented benchmark, automated recommendation, or mock-data fallback.
+
+## Demonstration flow
+
+1. **Investigate:** select an available tenant and month, examine distinct active users, event counts, duration, prior-calendar-month comparisons, and feature usage. Selecting a feature focuses the evidence inspector.
+2. **Diagnose:** capture the observed figures and write your own interpretation. The private library retains a dated snapshot even if live source data later changes. Editing a diagnosis changes only its title and interpretation.
+3. **Follow through:** create linked actions, set priority and a due date, and move them between Planned, In progress, and Done. Search by action or tenant, filter overdue/high-priority items, and revisit the original diagnosis.
+
+The signed-in user is the responsible owner. Cross-user collaboration, external notifications, and deletion are deliberately not exposed. Every action is linked to an existing, accessible diagnosis.
 
 ## Data
 
 - Connector `productanalytics` (type `fabric-semanticmodel`, delegated auth): every query runs as the signed-in user, so the model's own security applies.
-- Queries (DAX) live in `packages/frontend/src/queries/usage.ts` and use only measures and columns that exist in the model: `Events`, `Active users`, `Tenants`, `Average duration (s)`, `dim_tenant`, `dim_feature`, `dim_date`.
-- No mock data is shipped. If the model is unreachable the panels show an error.
+- Bounded DAX queries live in `packages/frontend/src/queries/adoption.ts`; their exact source columns and result contracts are checked, including numeric and calendar values.
+- `[Active users]` is queried at the required tenant/month or feature grain. Feature user counts are **not** summed. Event share is feature events / tenant events. Events per user is tenant events / tenant distinct users.
+- A zero or missing prior-month denominator yields no percentage comparison, not an invented increase. Duration is not a satisfaction metric. Monthly event totals are not normalized by month length.
+- Source limits are 1,000 tenant/month observations and 5,000 feature observations; sentinel rows detect over-limit results and fail explicitly instead of silently truncating.
+- A model failure does not hide the user's saved records. An unavailable app data service does not replace saving with browser storage.
+
+### App-owned records and authorization
+
+`packages/data/src/Diagnosis.ts` and `FollowUp.ts` define the runtime entities; `packages/shared` carries browser-safe contracts. Both have explicit authenticated create/read policies matching `claims.sub` to `owner_id`. Update field allowlists prevent transferring ownership, changing a diagnosis's captured evidence, or relinking an existing action.
+
+The typed client stamps ownership from the authenticated session. Backend policies, not client filters, enforce row access. Saved lists use cursor pagination with a visible failure above the supported 2,000-record-per-entity limit. Save feedback follows the server's returned row; a failed write keeps the form text.
+
+Snapshots contain aggregate evidence only, never user-level events. Do not put personal data or confidential information in free-text fields. A saved diagnosis is a user-authored working record, not a tamper-proof audit record.
+
+Source-model permission revocation does not automatically retract an already captured snapshot. App-owned records remain protected by their owner's app identity, not by a fresh semantic-model RLS evaluation. Review retention and revocation requirements before extending this demo to real customer data.
 
 ## Configuration and secrets
 
@@ -38,7 +59,17 @@ Merging a pull request never deploys.
 
 ### App delivery vs. data dependencies
 
-This workflow delivers only the app item. The semantic model, Gold tables and their security are delivered by the blueprint's Fabric deployment (`deploy-dev.yml`) and a `data-change` issue. The app does not create or change data items or permissions.
+This workflow delivers the app item **and the app-owned data schema**. Enabling Rayfin's MSSQL data service can provision app-managed storage and incurs capacity usage. The first Workbench deployment therefore requires explicit approval for that schema/service change. It does not repopulate Gold, modify the semantic model, or change shared data permissions.
+
+The source model, Gold tables, and their security have their own blueprint deployment (`deploy-dev.yml`) and data-change approvals. App-owned diagnoses/actions are a separate operational data lifecycle, not new Gold tables or copies of source event data.
+
+**Rollback is schema-aware:** a previous ref redeploys code/configuration, not a database backup. Preserve app records and use a schema-compatible release. Never use `--force`, drop tables, or disable the data service to simulate a rollback; review any migration first.
+
+### Current delivery blocker
+
+The first GitHub deployment failed at runtime settings synchronization with `403: Could not verify Build permission on semantic model` ([#55](https://github.com/frdeange/unily-fabric-blueprint/issues/55)). Read-only inspection found the registered automation principal already had Contributor workspace access and `ReadWriteExplore` model access. This is not proof that simply adding Build fixes the deployment. Confirm the run identity and the backend verification path before changing permissions.
+
+The workflow and local static checks are not evidence that automated deployment, live persistence, or owner isolation has passed. Before releasing the Workbench, resolve that blocker and test create, reload, edit, action progression, and access denial with a second user against the deployed data service. No live persistence result is claimed by this source change.
 
 ### Required environment setup (one-time, by a repository admin)
 

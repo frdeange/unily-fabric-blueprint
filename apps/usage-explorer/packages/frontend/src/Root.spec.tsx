@@ -1,5 +1,5 @@
 import type { OpaqueSession } from '@microsoft/rayfin-auth';
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { Root } from './Root';
@@ -145,6 +145,9 @@ describe('protected app content with standalone sign-in', () => {
     expect(
       await screen.findByRole('heading', { name: 'Your app is taking shape' })
     ).toBeVisible();
+    await waitFor(() =>
+      expect(auth.onSessionChange).toHaveBeenCalledTimes(1)
+    );
     await act(async () => notify?.(null));
     expect(
       await screen.findByRole('button', { name: 'Sign in with Microsoft' })
