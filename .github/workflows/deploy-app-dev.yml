@@ -53,6 +53,7 @@ jobs:
           npm run lint
           npm test
           npm run validate:visual
+          node --test scripts/deployment-identity.test.mjs
       - name: Authenticate with Entra federation
         uses: azure/login@a457da9ea143d694b1b9c7c869ebb04ebe844ef5 # v2.3.0
         with:
@@ -65,6 +66,11 @@ jobs:
           token="$(az account get-access-token --resource https://api.fabric.microsoft.com --query accessToken -o tsv)"
           echo "::add-mask::$token"
           echo "RAYFIN_TOKEN=$token" >> "$GITHUB_ENV"
+      - name: Diagnose deployment identity and direct model access (read only)
+        env:
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+        run: node scripts/deployment-identity.mjs
       - name: Preview deployment (no changes)
         run: npx rayfin up --dry-run --workspace-id "$RAYFIN_WORKSPACE_ID" --item-name "$ITEM_NAME" --json
       - name: Deploy

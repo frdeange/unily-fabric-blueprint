@@ -71,6 +71,21 @@ The first GitHub deployment failed at runtime settings synchronization with `403
 
 The workflow and local static checks are not evidence that automated deployment, live persistence, or owner isolation has passed. Before releasing the Workbench, resolve that blocker and test create, reload, edit, action progression, and access denial with a second user against the deployed data service. No live persistence result is claimed by this source change.
 
+Before deployment, `scripts/deployment-identity.mjs` compares the Azure CLI token's
+client/tenant claims with the configured identity and compares Fabric/Power BI
+principal claims. It logs comparisons, never tokens or identifiers. This is
+diagnostic claim inspection, not cryptographic token validation. It then makes a
+read-only model-access request and reports only the matching app principal's
+direct permission names. Missing direct entries cannot rule out inherited access.
+
+The [Get Dataset Users In Group API](https://learn.microsoft.com/rest/api/power-bi/datasets/get-dataset-users-in-group)
+requires **ReadWriteReshare**, which is not the same as Build (`Explore`).
+A 403 on this diagnostic is explicitly inconclusive: do not grant Reshare simply
+to make the diagnostic pass, and do not interpret it as proof of missing Build.
+Neither this diagnostic nor a successful dry run proves the workload's separate
+runtime-settings validation will accept the connector. Identity mismatch,
+malformed responses and transport failures stop deployment with sanitized errors.
+
 ### Required environment setup (one-time, by a repository admin)
 
 - `dev` environment secrets: `AZURE_CLIENT_ID`, `AZURE_TENANT_ID` (already used by the Fabric deployment), `RAYFIN_WORKSPACE_ID`, `RAYFIN_SEMANTIC_MODEL_ID`.

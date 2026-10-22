@@ -47,7 +47,9 @@ jobs:
       - name: Lint
         run: npm run lint
       - name: Unit tests
-        run: npm test
+        run: |
+          npm test
+          node --test scripts/deployment-identity.test.mjs
       - name: Validate visuals
         run: npm run validate:visual
       - name: Build
