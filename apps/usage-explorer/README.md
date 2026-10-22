@@ -67,7 +67,15 @@ The source model, Gold tables, and their security have their own blueprint deplo
 
 ### Current delivery blocker
 
-The first GitHub deployment failed at runtime settings synchronization with `403: Could not verify Build permission on semantic model` ([#55](https://github.com/frdeange/unily-fabric-blueprint/issues/55)). Read-only inspection found the registered automation principal already had Contributor workspace access and `ReadWriteExplore` model access. This is not proof that simply adding Build fixes the deployment. Confirm the run identity and the backend verification path before changing permissions.
+GitHub deployment fails at runtime settings synchronization with `403: Could not verify Build permission on semantic model` ([#55](https://github.com/frdeange/unily-fabric-blueprint/issues/55)).
+The approved Workbench deployment reproduced this on the merged source.
+Read-only Entra sign-in audit correlation confirmed that the run used the
+expected automation principal and the matching GitHub protected-dev federated
+credential. A fresh model-access read confirmed that same principal has
+`ReadWriteExplore` (including Build); earlier workspace inspection showed
+Contributor access. A mismatched deployment identity therefore does not explain
+the observed failure. The workload's server-side Build validation path is still
+unknown; do not change permissions or source-model security speculatively.
 
 The workflow and local static checks are not evidence that automated deployment, live persistence, or owner isolation has passed. Before releasing the Workbench, resolve that blocker and test create, reload, edit, action progression, and access denial with a second user against the deployed data service. No live persistence result is claimed by this source change.
 
